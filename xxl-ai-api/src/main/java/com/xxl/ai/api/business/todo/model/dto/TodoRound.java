@@ -22,7 +22,8 @@ import java.util.List;
  * @param startedAt    本轮开始时间
  * @author xxl-ai 2026-11-10
  */
-public record TodoRound(long ticketId,
+public record TodoRound(String roundId,
+                        long ticketId,
                         long assignmentId,
                         boolean launch,
                         long spaceId,

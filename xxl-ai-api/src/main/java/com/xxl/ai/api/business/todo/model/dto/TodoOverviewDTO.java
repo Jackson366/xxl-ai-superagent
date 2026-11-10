@@ -9,6 +9,7 @@ import java.util.List;
  */
 public class TodoOverviewDTO {
 
+    private List<TodoWorkerDTO> workers; /* 当前用户的活动派工 */
     private List<TodoThreadDTO> needMe;    /* 需要你处理的待办 */
     private List<String> problems;         /* 系统问题 */
     private String readyCode;              /* 未就绪原因编码，就绪为空 */
@@ -16,6 +17,14 @@ public class TodoOverviewDTO {
     private int busySlots;                 /* 占用的执行槽位 */
     private int maxWorkers;                /* 执行槽位上限 */
     private int unread;                    /* 未读消息数 */
+
+    public List<TodoWorkerDTO> getWorkers() {
+        return workers;
+    }
+
+    public void setWorkers(List<TodoWorkerDTO> workers) {
+        this.workers = workers;
+    }
 
     public List<TodoThreadDTO> getNeedMe() {
         return needMe;

@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.xxl.ai.api.business.todo.mapper.TodoEventMapper">
+    <resultMap id="TodoEvent" type="com.xxl.ai.api.business.todo.model.entity.TodoEvent">
+        <result column="id" property="id" />
+        <result column="thread_id" property="threadId" />
+        <result column="eval_id" property="evalId" />
+        <result column="ticket_id" property="ticketId" />
+        <result column="assignment_id" property="assignmentId" />
+        <result column="round_id" property="roundId" />
+        <result column="call_id" property="callId" />
+        <result column="kind" property="kind" />
+        <result column="status" property="status" />
+        <result column="summary" property="summary" />
+        <result column="detail" property="detail" />
+        <result column="duration_ms" property="durationMs" />
+        <result column="event_time" property="eventTime" />
+    </resultMap>
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO xxl_ai_todo_event (thread_id, eval_id, ticket_id, assignment_id, round_id, call_id, kind, status, summary, detail, duration_ms, event_time, add_time, update_time)
+        VALUES (#{threadId}, #{evalId}, #{ticketId}, #{assignmentId}, #{roundId}, #{callId}, #{kind}, #{status}, #{summary}, #{detail}, #{durationMs}, #{eventTime}, NOW(), NOW())
+    </insert>
+    <select id="listAfter" resultMap="TodoEvent">
+        SELECT id, thread_id, eval_id, ticket_id, assignment_id, round_id, call_id, kind, status, summary, detail, duration_ms, event_time
+        FROM xxl_ai_todo_event
+        WHERE thread_id = #{threadId} AND id &gt; #{afterId}
+        ORDER BY id ASC LIMIT #{limit}
+    </select>
+    <select id="workers" resultType="com.xxl.ai.api.business.todo.model.dto.TodoWorkerDTO">
+        SELECT th.id AS threadId, t.id AS ticketId, a.id AS assignmentId, t.title,
+               a.state, a.report_state AS reportState, a.report_summary AS reportSummary,
+               a.started_time AS startedTime, a.idle_time AS idleTime, a.delivered_time AS deliveredTime,
+               e.event_time AS lastEventTime, e.kind AS lastKind, e.status AS lastStatus, e.summary AS lastSummary
+        FROM xxl_ai_todo_assignment a
+        JOIN xxl_ai_todo_ticket t ON t.id = a.ticket_id
+        JOIN xxl_ai_todo_thread th ON th.id = t.thread_id
+        LEFT JOIN xxl_ai_todo_event e ON e.id = (
+            SELECT MAX(ev.id) FROM xxl_ai_todo_event ev WHERE ev.assignment_id = a.id
+        )
+        WHERE th.user_id = #{userId} AND t.ended_time IS NULL AND a.state IN ('pending', 'running')
+        ORDER BY a.id DESC LIMIT 100
+    </select>
+</mapper>

@@ -37,6 +37,8 @@
         </el-button>
       </div>
 
+      <TodoWorkerBoard :workers="overview.workers || []" @open="openThread" />
+
       <!-- 待办 -->
       <el-collapse v-model="activePanels" class="todo-panels">
         <el-collapse-item name="needMe" :title="t('business.todo.needMe', [overview.needMe.length])">
@@ -71,23 +73,23 @@
             :total="table.total"
             v-model:page="queryParams.pageNum"
             v-model:limit="queryParams.pageSize"
-            @pagination="getList"
+            @pagination="getList()"
           />
         </el-collapse-item>
       </el-collapse>
     </div>
 
     <!-- 详情 -->
-    <el-drawer v-model="detailVisible" :title="detail?.thread.title" size="50%" append-to-body @closed="detail = undefined">
+    <el-drawer v-model="detailVisible" :title="detail?.thread.title" size="min(1180px, 96vw)" append-to-body @closed="detail = undefined">
       <div v-loading="detailLoading && !detail">
-        <TodoTimeline
-          v-if="detail"
-          :detail="detail"
-          @stop="handleStop"
-          @retry="handleRetry"
-          @requeue="handleRequeue"
-          @dismiss="handleDismiss"
-        />
+        <el-tabs v-if="detail" v-model="detailTab">
+          <el-tab-pane :label="t('business.todo.observe.title')" name="observation">
+            <TodoObservation v-if="detailTab === 'observation'" :key="detail.thread.id" :thread-id="detail.thread.id" :detail="detail" />
+          </el-tab-pane>
+          <el-tab-pane :label="t('business.todo.timeline')" name="timeline">
+            <TodoTimeline :detail="detail" @stop="handleStop" @retry="handleRetry" @requeue="handleRequeue" @dismiss="handleDismiss" />
+          </el-tab-pane>
+        </el-tabs>
       </div>
       <template #footer>
         <div v-if="detail?.thread.question" class="todo-question">{{ t('business.todo.question') }}：{{ detail.thread.question }}</div>
@@ -124,6 +126,8 @@ import { usePageParams } from '@/composables/usePageParams'
 import type { TableState } from '@/types'
 import TodoTimeline from '../components/TodoTimeline.vue'
 import TodoInbox from '../components/TodoInbox.vue'
+import TodoWorkerBoard from '../components/TodoWorkerBoard.vue'
+import TodoObservation from '../components/TodoObservation.vue'
 import { dismissDecision, getOverview as fetchOverview, getTodo, listTodo, requeueTrigger, retryTicket, stopTicket } from '../api'
 import { useSubmit } from '../composables/useSubmit'
 import { reasonDisplay, reasonLabel, stageLabel, stageType } from '../composables/useTodoLabel'
@@ -139,11 +143,12 @@ const replier = useSubmit() /* 追加/回答 */
 // --------------------------------- ref data ---------------------------------
 const draft = ref('') /* 新建内容 */
 const reply = ref('') /* 追加/回答内容 */
-const activePanels = ref<string[]>(['needMe']) /* 默认只展开“需要我处理” */
+const activePanels = ref<string[]>(['needMe', 'all']) /* 默认只展开“需要我处理” */
 const inboxVisible = ref(false)
 const overview = ref<TodoOverview>({ needMe: [], problems: [], paused: false, busySlots: 0, maxWorkers: 0, unread: 0 })
 const queryParams = ref<TodoQuery>({ pageNum: 1, pageSize: 10 })
 const table = ref<TableState<TodoThread>>({ list: [], total: 0, loading: true, showSearch: false, ids: [], single: true, multiple: true })
+const detailTab = ref('observation')
 const detailVisible = ref(false)
 const detailLoading = ref(false)
 const detailId = ref<number>()
@@ -174,10 +179,11 @@ function getList(silent = false) {
 }
 function getDetail() {
   if (detailId.value == null) return
+  const id = detailId.value
   detailLoading.value = true
-  getTodo(detailId.value)
+  getTodo(id)
     .then((res) => {
-      detail.value = res.data
+      if (detailId.value === id && detailVisible.value) detail.value = res.data
     })
     .finally(() => {
       detailLoading.value = false
@@ -190,16 +196,18 @@ function refresh(silent = true) {
   if (detailVisible.value) getDetail()
 }
 /** 在等谁、需要什么：提问 > 报告摘要 > 研判原因 */
-function waitingText(row: TodoThread): string {
-  return row.question || row.summary || reasonDisplay(row.reasonCode, row.reasonText)
+function waitingText(row: unknown): string {
+  const item = row as TodoThread
+  return item.question || item.summary || reasonDisplay(item.reasonCode, item.reasonText)
 }
-function openDetail(row: TodoThread) {
-  openThread(row.id)
+function openDetail(row: { id?: unknown }) {
+  if (typeof row.id === 'number') openThread(row.id)
 }
 function openThread(id: number) {
   if (detailId.value !== id) {
     detail.value = undefined
     reply.value = ''
+    detailTab.value = 'observation'
   }
   detailId.value = id
   detailVisible.value = true

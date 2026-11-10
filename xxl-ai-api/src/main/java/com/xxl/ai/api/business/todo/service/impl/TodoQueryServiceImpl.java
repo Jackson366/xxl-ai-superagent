@@ -75,6 +75,8 @@ public class TodoQueryServiceImpl implements TodoQueryService {
     private TodoSettingsService settingsService;
     @Resource
     private TodoEffectService effectService;
+    @Resource
+    private com.xxl.ai.api.business.todo.mapper.TodoEventMapper eventMapper;
 
     @Override
     public PageModel<TodoThreadDTO> pageList(int userId, int offset, int pagesize) {
@@ -136,6 +138,7 @@ public class TodoQueryServiceImpl implements TodoQueryService {
             }
         }
         overview.setNeedMe(needMe);
+        overview.setWorkers(eventMapper.workers(userId));
         overview.setProblems(effectService.problems());
         overview.setReadyCode(settingsService.readyCode());
         overview.setPaused(settingsService.worker().paused);
@@ -282,6 +285,8 @@ public class TodoQueryServiceImpl implements TodoQueryService {
         TodoMandate mandate = TodoJsonTool.fromJson(decision.getMandate(), TodoMandate.class);
         dto.setScope(mandate == null ? null : mandate.scope);
         Map<?, ?> audit = TodoJsonTool.fromJson(decision.getAudit(), Map.class);
+        dto.setRouterDecision(audit == null ? null : (String) audit.get("routerDecision"));
+        dto.setRouterScope(audit == null ? null : (String) audit.get("scope"));
         dto.setWouldAccept(audit != null && Boolean.TRUE.equals(audit.get("wouldAccept")));
         dto.setDismissed(decision.getDismissed());
         dto.setPolicyVersion(decision.getPolicyVersion());

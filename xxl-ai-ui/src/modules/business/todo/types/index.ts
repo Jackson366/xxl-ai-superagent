@@ -60,6 +60,8 @@ export interface TodoDecision {
   /** 授权范围 */
   scope?: string
   /** 观察模式：会接单但未执行 */
+  routerDecision?: string
+  routerScope?: string
   wouldAccept: boolean
   /** 未完成问题已忽略：0-否、1-是 */
   dismissed: number
@@ -126,6 +128,7 @@ export interface TodoThreadDetail {
 
 /** 概览：要我吗、健康吗 */
 export interface TodoOverview {
+  workers?: TodoWorker[]
   needMe: TodoThread[]
   problems: string[]
   /** 未就绪原因编码，就绪为空 */
@@ -223,4 +226,39 @@ export interface TodoOptions {
   suppliers?: TodoOption[]
   mcps?: TodoOption[]
   skills?: TodoOption[]
+}
+
+/** 持久化执行事件；ID 同时作为断线续传游标 */
+export interface TodoEvent {
+  id: number
+  threadId: number
+  evalId?: string
+  ticketId?: number
+  assignmentId?: number
+  roundId?: string
+  callId?: string
+  kind: string
+  status: string
+  summary?: string
+  detail?: string
+  durationMs?: number
+  eventTime: string
+}
+
+/** 当前用户的活动派工 */
+export interface TodoWorker {
+  threadId: number
+  ticketId: number
+  assignmentId: number
+  title: string
+  state: string
+  reportState?: string
+  reportSummary?: string
+  startedTime?: string
+  idleTime?: string
+  deliveredTime?: string
+  lastEventTime?: string
+  lastKind?: string
+  lastStatus?: string
+  lastSummary?: string
 }

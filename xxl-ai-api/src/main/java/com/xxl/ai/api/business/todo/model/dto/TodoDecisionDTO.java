@@ -9,6 +9,8 @@ import java.util.List;
  */
 public class TodoDecisionDTO {
 
+    private String routerDecision;  /* Router 建议，确定性决定时为空 */
+    private String routerScope;     /* Router 建议范围 */
     private long id;                  /* 决定ID */
     private String evalId;            /* EvalID */
     private String kind;              /* 决定：accept、stop、ignore、unavailable */
@@ -22,6 +24,22 @@ public class TodoDecisionDTO {
     private int dismissed;            /* 未完成问题已忽略：0-否、1-是 */
     private String policyVersion;     /* 策略版本 */
     private String eventTime;         /* 决定时间 */
+
+    public String getRouterDecision() {
+        return routerDecision;
+    }
+
+    public void setRouterDecision(String routerDecision) {
+        this.routerDecision = routerDecision;
+    }
+
+    public String getRouterScope() {
+        return routerScope;
+    }
+
+    public void setRouterScope(String routerScope) {
+        this.routerScope = routerScope;
+    }
 
     public long getId() {
         return id;

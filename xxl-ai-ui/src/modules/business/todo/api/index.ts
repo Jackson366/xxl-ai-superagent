@@ -85,3 +85,17 @@ export function listSettingsHistory(block: TodoSettingsBlock): Promise<Response<
 export function getSettingsOptions(spaceId?: number): Promise<Response<TodoOptions>> {
   return request({ url: '/todo/settings/options', method: 'get', params: { spaceId } })
 }
+
+/** SSE 携带登录 Header，保持与普通 API 相同的认证方式 */
+export async function openTodoEvents(threadId: number, afterId: number, signal: AbortSignal) {
+  const { getToken, getTokenKeyHeader } = await import('@/utils/auth')
+  const response = await fetch(`${import.meta.env.VITE_APP_BASE_API ?? ''}/todo/events/stream?threadId=${threadId}&afterId=${afterId}`, {
+    headers: { [getTokenKeyHeader()]: getToken() ?? '', Accept: 'text/event-stream' },
+    credentials: 'same-origin',
+    signal
+  })
+  if (!response.ok || !response.headers.get('content-type')?.includes('text/event-stream') || !response.body) {
+    throw new Error(`HTTP ${response.status}`)
+  }
+  return response.body.getReader()
+}

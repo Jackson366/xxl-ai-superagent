@@ -28,7 +28,7 @@ export interface RouteData {
   path?: string
   component?: unknown
   name?: string
-  redirect?: string
+  redirect?: string | (() => string)
   hidden?: boolean
   alwaysShow?: boolean
   meta?: RouteMetaData
