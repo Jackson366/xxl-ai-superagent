@@ -21,6 +21,8 @@ import com.xxl.ai.api.business.todo.model.json.TodoSettingsContent;
 import com.xxl.ai.api.business.todo.service.TodoEffectService;
 import com.xxl.ai.api.business.todo.service.TodoEngineService;
 import com.xxl.ai.api.business.todo.service.TodoSettingsService;
+import com.xxl.ai.api.business.todo.service.TodoObservationService;
+import com.xxl.ai.api.business.harness.superagent.SuperagentTraceEvent;
 import com.xxl.ai.api.business.todo.util.TodoJsonTool;
 import com.xxl.ai.api.business.todo.util.TodoStageTool;
 import com.xxl.tool.core.StringTool;
@@ -89,6 +91,8 @@ public class TodoEffectServiceImpl implements TodoEffectService {
     private SuperagentRouterTool routerTool;
     @Resource
     private SuperagentWorkerTool workerTool;
+    @Resource
+    private TodoObservationService observation;
 
     /** 本实例标识（副作用抢占） */
     private final String owner = "todo-" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
@@ -298,7 +302,8 @@ public class TodoEffectServiceImpl implements TodoEffectService {
                 finish(effect);
                 return;
             }
-            Map<String, String> result = routerTool.assess(runtime.getData(), candidate.prompt(), candidate.text(), evalId);
+            Map<String, String> result = routerTool.assess(runtime.getData(), candidate.prompt(), candidate.text(), evalId,
+                    event -> observation.append(threadId, evalId, null, null, null, event));
             engine.decide(threadId, evalId, result);
             finish(effect);
         } catch (Exception e) {
@@ -382,8 +387,11 @@ public class TodoEffectServiceImpl implements TodoEffectService {
             if (!runtime.isSuccess()) {
                 error = "模型不可用：" + runtime.getMsg();
             } else {
+                long threadId = ticketMapper.load(round.ticketId()).getThreadId();
                 reply = workerTool.runRound(runtime.getData(), buildAgent(round), round.ticketId(), round.assignmentId(),
-                        round.roleList(), round.contentList(), round.content(), engine);
+                        round.roleList(), round.contentList(), round.content(), engine,
+                        event -> observation.append(threadId, null,
+                                round.ticketId(), round.assignmentId(), round.roundId(), event));
             }
         } catch (Exception e) {
             // 人工停止与超时引起的中断不算失败
@@ -562,6 +570,30 @@ public class TodoEffectServiceImpl implements TodoEffectService {
             logger.warn("超级助理记录副作用失败出错, kind={}, key={}, err={}", effect.getKind(), effect.getEffectKey(), ex.getMessage());
         }
         logger.warn("超级助理副作用执行失败, kind={}, key={}, attempts={}, err={}", effect.getKind(), effect.getEffectKey(), attempts, error);
+        // 副作用成功即删除，重试信息另以事件保留
+        try {
+            Long ticketId = null;
+            Long assignmentId = null;
+            long threadId;
+            String evalId = null;
+            if (TodoConstant.EFFECT_ASSESSMENT.equals(effect.getKind())) {
+                threadId = payloadLong(effect, "threadId");
+                evalId = effect.getEffectKey();
+            } else if (TodoConstant.EFFECT_LAUNCH.equals(effect.getKind()) || TodoConstant.EFFECT_DELIVERY.equals(effect.getKind())) {
+                ticketId = TodoConstant.EFFECT_LAUNCH.equals(effect.getKind())
+                        ? payloadLong(effect, "ticketId") : Long.parseLong(effect.getEffectKey());
+                assignmentId = TodoConstant.EFFECT_LAUNCH.equals(effect.getKind()) ? Long.parseLong(effect.getEffectKey()) : null;
+                threadId = ticketMapper.load(ticketId).getThreadId();
+            } else {
+                return;
+            }
+            observation.append(threadId, evalId, ticketId, assignmentId, null,
+                    new SuperagentTraceEvent("effect.retry", "queued", effect.getKind(),
+                            TodoJsonTool.toJson(Map.of("attempt", attempts, "nextRetryAt", System.currentTimeMillis() + delay,
+                                    "error", error)), null, null));
+        } catch (RuntimeException traceError) {
+            logger.warn("超级助理重试事件记录失败", traceError);
+        }
     }
 
     // ---------------------- 工具 ----------------------

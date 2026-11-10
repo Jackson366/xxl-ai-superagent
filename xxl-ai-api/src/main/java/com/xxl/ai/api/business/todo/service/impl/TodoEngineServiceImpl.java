@@ -33,6 +33,8 @@ import com.xxl.ai.api.business.todo.model.json.TodoToolsSnapshot;
 import com.xxl.ai.api.business.todo.model.json.TodoWorkerModel;
 import com.xxl.ai.api.business.todo.service.TodoEngineService;
 import com.xxl.ai.api.business.todo.service.TodoSettingsService;
+import com.xxl.ai.api.business.todo.service.TodoObservationService;
+import com.xxl.ai.api.business.harness.superagent.SuperagentTraceEvent;
 import com.xxl.ai.api.business.todo.util.TodoJsonTool;
 import com.xxl.ai.api.business.todo.util.TodoStageTool;
 import com.xxl.ai.api.framework.constant.enums.XxlRoleEnum;
@@ -107,6 +109,9 @@ public class TodoEngineServiceImpl implements TodoEngineService {
     @Resource
     private ApplicationEventPublisher eventPublisher;
 
+    @Resource
+    private TodoObservationService observation;
+
     // ---------------------- 提交 ----------------------
 
     @Override
@@ -170,6 +175,9 @@ public class TodoEngineServiceImpl implements TodoEngineService {
         // 并发重复提交时唯一索引冲突，整个事务回滚，由调用方回读已受理结果
         triggerMapper.insert(trigger);
 
+        observation.append(thread.getId(), null, null, null, null,
+                new SuperagentTraceEvent("trigger.received", "success", kind,
+                        TodoJsonTool.toJson(Map.of("triggerId", trigger.getId(), "content", content)), null, null));
         thread.setLastTime(now);
         route(thread, trigger, answeredTicketId);
         threadMapper.update(thread);
@@ -213,6 +221,8 @@ public class TodoEngineServiceImpl implements TodoEngineService {
                 enqueue(TodoConstant.EFFECT_DELIVERY, String.valueOf(ticket.getId()), Map.of("ticketId", ticket.getId()));
             }
             disposition.fanout.add(ticket.getId());
+            observation.append(thread.getId(), null, ticket.getId(), null, null,
+                    new SuperagentTraceEvent("input.delivered", "success", String.valueOf(trigger.getId()), null, null, null));
         }
         if (disposition.fanout.isEmpty()) {
             List<Long> pending = TodoJsonTool.longList(thread.getPending());
@@ -322,6 +332,9 @@ public class TodoEngineServiceImpl implements TodoEngineService {
         for (Long triggerId : evaluating.triggerIds) {
             updateDisposition(triggerId, item -> item.evalId = evaluating.id);
         }
+        observation.append(threadId, evaluating.id, null, null, null,
+                new SuperagentTraceEvent("router.queued", "queued", null,
+                        TodoJsonTool.toJson(Map.of("triggerIds", evaluating.triggerIds, "policyVersion", evaluating.policyVersion)), null, null));
         enqueue(TodoConstant.EFFECT_ASSESSMENT, evaluating.id, Map.of("threadId", threadId));
         wake(null);
     }
@@ -370,6 +383,7 @@ public class TodoEngineServiceImpl implements TodoEngineService {
         String title = assessment.get("title");
         String scope = assessment.get("scope");
         Map<String, Object> audit = new LinkedHashMap<>();
+        audit.put("routerDecision", assessment.get("decision"));
         audit.put("title", title);
         audit.put("scope", scope);
         boolean accept = TodoConstant.DECISION_ACCEPT.equals(assessment.get("decision"));
@@ -411,6 +425,8 @@ public class TodoEngineServiceImpl implements TodoEngineService {
         ticket.setMandate(TodoJsonTool.toJson(mandate));
         ticketMapper.insert(ticket);
         decisionMapper.updateTicketId(decision.getId(), ticket.getId());
+        observation.append(threadId, evalId, ticket.getId(), null, null,
+                new SuperagentTraceEvent("ticket.created", "success", ticket.getTitle(), mandate.scope, null, null));
 
         for (Long triggerId : evaluating.triggerIds) {
             addInput(ticket, TodoConstant.INPUT_TRIGGER, triggerId, true, null);
@@ -533,7 +549,12 @@ public class TodoEngineServiceImpl implements TodoEngineService {
         if (tools == null) {
             tools = new TodoToolsSnapshot();
         }
-        return new TodoRound(ticketId, latest.getId(), launch, workerModel.spaceId, workerModel.supplierId,
+        String roundId = UUID.randomUUID().toString();
+        observation.append(ticket.getThreadId(), null, ticketId, latest.getId(), roundId,
+                new SuperagentTraceEvent("round.started", "running", String.valueOf(workerModel.modelId),
+                        TodoJsonTool.toJson(Map.of("inputIds", inputIds, "modelId", workerModel.modelId,
+                                "supplierId", workerModel.supplierId)), null, null));
+        return new TodoRound(roundId, ticketId, latest.getId(), launch, workerModel.spaceId, workerModel.supplierId,
                 workerModel.modelId, join(tools.mcpIds), join(tools.skillIds), workerPrompt(ticket), roleList,
                 contentList, content, inputIds, now);
     }
@@ -547,6 +568,12 @@ public class TodoEngineServiceImpl implements TodoEngineService {
         }
         TodoTicket ticket = locked.ticket();
         Date now = new Date();
+        TodoAssignment current = assignmentMapper.load(round.assignmentId());
+        String roundStatus = current != null && "stopped".equals(current.getEndedReason()) ? "cancelled"
+                : timeout ? "timeout" : error == null ? "success" : "failed";
+        observation.append(ticket.getThreadId(), null, ticket.getId(), round.assignmentId(), round.roundId(),
+                new SuperagentTraceEvent("round.ended", roundStatus, null, error,
+                        null, Math.max(0, now.getTime() - round.startedAt().getTime())));
         if (StringTool.isNotBlank(reply)) {
             saveWorkerMsg(ticket.getId(), round.assignmentId(), "assistant", reply, null);
         }
@@ -660,6 +687,8 @@ public class TodoEngineServiceImpl implements TodoEngineService {
         if (disposition.acked.contains(ticketId)) {
             return TodoJsonTool.toJson(Map.of("acknowledged", true, "reused", true));
         }
+        observation.append(ticket.getThreadId(), null, ticketId, null, null,
+                new SuperagentTraceEvent("input.acknowledged", "success", String.valueOf(triggerId), text, null, null));
         disposition.acked.add(ticketId);
         triggerMapper.updateDisposition(triggerId, TodoJsonTool.toJson(disposition));
         sendMessage(ticket, TodoConstant.PURPOSE_ACKNOWLEDGEMENT, "ack-" + ticketId + "-" + triggerId,
@@ -759,6 +788,8 @@ public class TodoEngineServiceImpl implements TodoEngineService {
         handback.reason = TodoJsonTool.abbreviate(reasonText, 300);
         handback.at = System.currentTimeMillis();
         disposition.handbacks.add(handback);
+        observation.append(locked.thread().getId(), null, ticketId, null, null,
+                new SuperagentTraceEvent("input.handback", "queued", String.valueOf(triggerId), reasonText, null, null));
         triggerMapper.updateDisposition(triggerId, TodoJsonTool.toJson(disposition));
 
         // 没有其他工单接手时进入研判
@@ -1084,6 +1115,8 @@ public class TodoEngineServiceImpl implements TodoEngineService {
         assignment.setState(TodoConstant.ASSIGNMENT_PENDING);
         assignment.setTools(TodoJsonTool.toJson(tools));
         assignmentMapper.insert(assignment);
+        observation.append(ticket.getThreadId(), null, ticket.getId(), assignment.getId(), null,
+                new SuperagentTraceEvent("assignment.queued", "queued", null, assignment.getTools(), null, null));
         enqueue(TodoConstant.EFFECT_LAUNCH, String.valueOf(assignment.getId()),
                 Map.of("ticketId", ticket.getId(), "assignmentId", assignment.getId()));
     }
@@ -1095,6 +1128,9 @@ public class TodoEngineServiceImpl implements TodoEngineService {
         assignment.setState(TodoConstant.ASSIGNMENT_ENDED);
         assignment.setEndedTime(new Date());
         assignment.setEndedReason(endedReason);
+        TodoTicket ticket = ticketMapper.load(assignment.getTicketId());
+        observation.append(ticket.getThreadId(), null, ticket.getId(), assignment.getId(), null,
+                new SuperagentTraceEvent("assignment.ended", "ended", endedReason, null, null, null));
     }
 
     /**
@@ -1135,6 +1171,9 @@ public class TodoEngineServiceImpl implements TodoEngineService {
         assignment.setReportState(state);
         assignment.setReportSummary(summary);
         assignment.setReportTime(now);
+        TodoTicket ticket = ticketMapper.load(assignment.getTicketId());
+        observation.append(ticket.getThreadId(), null, ticket.getId(), assignment.getId(), null,
+                new SuperagentTraceEvent("worker.reported", state, summary, null, null, null));
     }
 
     // ---------------------- 内部：决定与去向 ----------------------
@@ -1156,6 +1195,13 @@ public class TodoEngineServiceImpl implements TodoEngineService {
         decision.setAudit(TodoJsonTool.toJson(audit));
         decision.setEventTime(new Date());
         decisionMapper.insert(decision);
+        Map<String, Object> finalDecision = new LinkedHashMap<>();
+        finalDecision.put("decisionId", decision.getId());
+        finalDecision.put("kind", kind);
+        finalDecision.put("reason", reasons);
+        finalDecision.put("policyVersion", decision.getPolicyVersion());
+        observation.append(thread.getId(), evalId, null, null, null,
+                new SuperagentTraceEvent("decision.recorded", kind, kind, TodoJsonTool.toJson(finalDecision), null, null));
         for (Long triggerId : triggerIds) {
             updateDisposition(triggerId, item -> item.decisionId = decision.getId());
         }

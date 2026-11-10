@@ -8,6 +8,8 @@ import org.springframework.boot.sql.init.DatabaseInitializationSettings;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
+import org.springframework.core.io.ClassPathResource;
+import org.springframework.jdbc.datasource.init.ResourceDatabasePopulator;
 
 import javax.sql.DataSource;
 import java.nio.charset.StandardCharsets;
@@ -47,6 +49,11 @@ public class LocalDatabaseConfig {
             protected void runScripts(Scripts scripts) {
                 // 已初始化：跳过，避免种子数据重复插入
                 if (markerTableExists(getDataSource())) {
+                    // 旧库只执行幂等增量，保留已有业务数据和配置
+                    ResourceDatabasePopulator migration = new ResourceDatabasePopulator(
+                            new ClassPathResource("db/upgrade_20261111_todo_observation_h2.sql"));
+                    migration.setSqlScriptEncoding(StandardCharsets.UTF_8.name());
+                    migration.execute(getDataSource());
                     return;
                 }
                 logger.info("本地数据库为空，执行初始化脚本: {}", SCHEMA_LOCATION);

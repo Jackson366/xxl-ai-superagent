@@ -18,6 +18,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
+import java.util.function.Consumer;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * 超级助理 Worker：执行工单的一轮工作
@@ -56,14 +58,27 @@ public class SuperagentWorkerTool {
      */
     public String runRound(SupplierRuntime runtime, Agent agent, long ticketId, long assignmentId,
                            List<String> roleList, List<String> contentList, String content,
-                           WorkerReportHandler handler) {
+                           WorkerReportHandler handler, Consumer<SuperagentTraceEvent> observer) {
+        long start = System.nanoTime();
+        AtomicBoolean responded = new AtomicBoolean();
+        SuperagentTraceTool.emit(observer, new SuperagentTraceEvent("model.started", "running", null, null, null, null));
         SkillShellTracker tracker = skillToolFactory.newShellTracker(agent.getId());
         try {
             Object[] tools = buildTools(agent, tracker, ticketId, assignmentId, handler);
             LlmChatTool.ChatText result = llmChatTool.chat(runtime, agent.getSystemPrompt(), roleList, contentList,
-                    content, tools, null, "todo-ticket-" + ticketId, null, null);
+                    content, SuperagentTraceTool.wrap(tools, observer), null, "todo-ticket-" + ticketId, null, chunk -> {
+                        if (responded.compareAndSet(false, true)) {
+                            SuperagentTraceTool.emit(observer, new SuperagentTraceEvent("model.responding", "running", null, null, null, null));
+                        }
+                    });
+            SuperagentTraceTool.emit(observer, new SuperagentTraceEvent("model.finished", "success", null, result.getContent(), null,
+                    (System.nanoTime() - start) / 1000000));
             logger.info("超级助理 Worker 本轮结束, ticketId={}, assignmentId={}", ticketId, assignmentId);
             return result.getContent();
+        } catch (RuntimeException error) {
+            SuperagentTraceTool.emit(observer, new SuperagentTraceEvent("model.failed", "failed", null, error.getMessage(), null,
+                    (System.nanoTime() - start) / 1000000));
+            throw error;
         } finally {
             // 本轮结束回收 Shell 进程，避免占用槽位外的资源
             tracker.cancel();

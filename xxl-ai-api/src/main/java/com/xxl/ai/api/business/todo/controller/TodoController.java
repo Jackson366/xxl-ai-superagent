@@ -21,6 +21,12 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import com.xxl.ai.api.business.todo.model.entity.TodoEvent;
+import com.xxl.ai.api.business.todo.service.TodoObservationService;
+import com.xxl.ai.api.business.harness.superagent.SuperagentEventStreamTool;
+import org.springframework.http.MediaType;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /**
  * 超级助理 Controller（待办、工单、收件箱、概览；仅管理员）
@@ -35,6 +41,10 @@ public class TodoController {
     private TodoEngineService engine;
     @Resource
     private TodoQueryService queryService;
+    @Resource
+    private TodoObservationService observation;
+    @Resource
+    private SuperagentEventStreamTool eventStream;
 
     /**
      * 分页查询待办
@@ -54,6 +64,29 @@ public class TodoController {
     @XxlSso(permission = "todo:default")
     public Response<TodoThreadDetailDTO> load(HttpServletRequest request, @RequestParam long id) {
         return queryService.load(userId(request), id);
+    }
+
+    /* 持久化事件的增量读取；刷新后可从游标补齐 */
+    @GetMapping("/events")
+    @XxlSso(permission = "todo:default")
+    public Response<List<TodoEvent>> events(HttpServletRequest request, @RequestParam long threadId,
+                                            @RequestParam(defaultValue = "0") long afterId,
+                                            @RequestParam(defaultValue = "200") int limit) {
+        try {
+            return Response.ofSuccess(observation.events(userId(request), threadId, afterId, limit));
+        } catch (IllegalArgumentException error) {
+            return Response.ofFail(error.getMessage());
+        }
+    }
+
+    /* SSE 只读历史，不触发模型或工具；每轮扫描重新校验归属 */
+    @GetMapping(value = "/events/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    @XxlSso(permission = "todo:default")
+    public SseEmitter eventStream(HttpServletRequest request, @RequestParam long threadId,
+                                  @RequestParam(defaultValue = "0") long afterId) {
+        int currentUser = userId(request);
+        observation.events(currentUser, threadId, afterId, 1);
+        return eventStream.open(afterId, cursor -> observation.events(currentUser, threadId, cursor, 200), TodoEvent::getId);
     }
 
     /**

@@ -13,6 +13,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.function.Consumer;
 
 /**
  * 超级助理 Router：执行一次研判（Assessment），只调用模型、不挂任何业务工具
@@ -48,13 +49,23 @@ public class SuperagentRouterTool {
      * @param evalId       EvalID，作为模型会话标识
      * @return 解析后的研判结果字段：decision、title、scope、reason（确认由 Worker 经 todo_ack 发出，Router 不发）
      */
-    public Map<String, String> assess(SupplierRuntime runtime, String routerPrompt, String candidate, String evalId) {
+    public Map<String, String> assess(SupplierRuntime runtime, String routerPrompt, String candidate, String evalId, Consumer<SuperagentTraceEvent> observer) {
         String systemPrompt = (routerPrompt == null ? "" : routerPrompt) + OUTPUT_RULE;
-        LlmChatTool.ChatText result = llmChatTool.chat(runtime, systemPrompt, null, null, candidate,
-                null, null, evalId, null, null);
-        Map<String, String> parsed = parse(result.getContent());
-        logger.info("超级助理研判完成, evalId={}, decision={}", evalId, parsed.get("decision"));
-        return parsed;
+        long start = System.nanoTime();
+        SuperagentTraceTool.emit(observer, new SuperagentTraceEvent("router.started", "running", null, candidate, null, null));
+        try {
+            LlmChatTool.ChatText result = llmChatTool.chat(runtime, systemPrompt, null, null, candidate,
+                    null, null, evalId, null, null);
+            Map<String, String> parsed = parse(result.getContent());
+            SuperagentTraceTool.emit(observer, new SuperagentTraceEvent("router.suggested", "success", parsed.get("decision"),
+                    GSON.toJson(parsed), null, (System.nanoTime() - start) / 1000000));
+            logger.info("超级助理研判完成, evalId={}, decision={}", evalId, parsed.get("decision"));
+            return parsed;
+        } catch (RuntimeException error) {
+            SuperagentTraceTool.emit(observer, new SuperagentTraceEvent("router.failed", "failed", null,
+                    error.getMessage(), null, (System.nanoTime() - start) / 1000000));
+            throw error;
+        }
     }
 
     /**
