@@ -28,9 +28,9 @@ type AppSize = 'default' | 'small' | 'large'
 // ==================== 创建 Vue 应用 ====================
 const app = createApp(App)
 
-// 安装核心插件
-app.use(router)
+// 安装核心插件（Pinia 须先于 Router：路由重定向/守卫中会读取 store）
 app.use(store)
+app.use(router)
 app.use(ElementPlus, {
   // 语言包由 App.vue 的 el-config-provider 响应式提供（以后端配置为准）
   size: (localStorage.getItem(FONTSIZE_KEY) || 'default') as AppSize

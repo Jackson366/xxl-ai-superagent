@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+	"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.xxl.ai.api.business.todo.mapper.TodoMessageMapper">
+
+	<resultMap id="TodoMessage" type="com.xxl.ai.api.business.todo.model.entity.TodoMessage" >
+		<result column="id" property="id" />
+		<result column="message_key" property="messageKey" />
+		<result column="user_id" property="userId" />
+		<result column="ticket_id" property="ticketId" />
+		<result column="trigger_id" property="triggerId" />
+		<result column="purpose" property="purpose" />
+		<result column="content" property="content" />
+		<result column="status" property="status" />
+		<result column="read_status" property="readStatus" />
+		<result column="read_time" property="readTime" />
+		<result column="add_time" property="addTime" />
+		<result column="update_time" property="updateTime" />
+	</resultMap>
+
+	<sql id="Base_Column_List">
+		t.id,
+		t.message_key,
+		t.user_id,
+		t.ticket_id,
+		t.trigger_id,
+		t.purpose,
+		t.content,
+		t.status,
+		t.read_status,
+		t.read_time,
+		t.add_time,
+		t.update_time
+	</sql>
+
+	<select id="load" parameterType="java.util.HashMap" resultMap="TodoMessage">
+		SELECT <include refid="Base_Column_List" />
+		FROM xxl_ai_todo_message AS t
+		WHERE t.id = #{id}
+	</select>
+
+	<insert id="insert" parameterType="com.xxl.ai.api.business.todo.model.entity.TodoMessage" useGeneratedKeys="true" keyProperty="id" >
+		INSERT INTO xxl_ai_todo_message (
+			message_key, user_id, ticket_id, trigger_id, purpose, content, status, read_status, add_time, update_time
+		) VALUES (
+			#{messageKey}, #{userId}, #{ticketId}, #{triggerId}, #{purpose}, #{content}, #{status}, 0, NOW(), NOW()
+		)
+	</insert>
+
+	<select id="loadByKey" parameterType="java.util.HashMap" resultMap="TodoMessage">
+		SELECT <include refid="Base_Column_List" />
+		FROM xxl_ai_todo_message AS t
+		WHERE t.message_key = #{messageKey}
+	</select>
+
+	<update id="updateStatus" parameterType="java.util.HashMap" >
+		UPDATE xxl_ai_todo_message
+		SET status = #{status},
+			update_time = NOW()
+		WHERE id = #{id} AND status = 'pending'
+	</update>
+
+	<update id="dropPendingByTicket" parameterType="java.util.HashMap" >
+		UPDATE xxl_ai_todo_message
+		SET status = 'dropped',
+			update_time = NOW()
+		WHERE ticket_id = #{ticketId} AND status = 'pending'
+	</update>
+
+	<select id="listByTicket" parameterType="java.util.HashMap" resultMap="TodoMessage">
+		SELECT <include refid="Base_Column_List" />
+		FROM xxl_ai_todo_message AS t
+		WHERE t.ticket_id = #{ticketId}
+		ORDER BY t.id ASC
+	</select>
+
+	<select id="pageList" parameterType="java.util.HashMap" resultMap="TodoMessage">
+		SELECT <include refid="Base_Column_List" />
+		FROM xxl_ai_todo_message AS t
+		WHERE t.user_id = #{userId}
+			AND t.status = 'sent'
+			<if test="readStatus gt -1">
+				AND t.read_status = #{readStatus}
+			</if>
+		ORDER BY t.id DESC
+		LIMIT #{offset}, #{pagesize}
+	</select>
+
+	<select id="pageListCount" parameterType="java.util.HashMap" resultType="int">
+		SELECT count(1)
+		FROM xxl_ai_todo_message AS t
+		WHERE t.user_id = #{userId}
+			AND t.status = 'sent'
+			<if test="readStatus gt -1">
+				AND t.read_status = #{readStatus}
+			</if>
+	</select>
+
+	<update id="markRead" parameterType="java.util.HashMap" >
+		UPDATE xxl_ai_todo_message
+		SET read_status = 1,
+			read_time = NOW(),
+			update_time = NOW()
+		WHERE user_id = #{userId}
+			AND read_status = 0
+			AND id IN
+			<foreach collection="ids" item="item" open="(" close=")" separator="," >
+				#{item}
+			</foreach>
+	</update>
+
+</mapper>

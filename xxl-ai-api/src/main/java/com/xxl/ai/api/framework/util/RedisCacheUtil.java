@@ -1,6 +1,7 @@
 package com.xxl.ai.api.framework.util;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Profile;
 import org.springframework.data.redis.core.BoundSetOperations;
 import org.springframework.data.redis.core.HashOperations;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -16,7 +17,8 @@ import java.util.concurrent.TimeUnit;
  * @author xuxueli 2020-01-01
  */
 @Component
-public class RedisCacheUtil {
+@Profile("!local")
+public class RedisCacheUtil implements CacheStore {
 
     @Autowired
     public RedisTemplate redisTemplate;
@@ -45,6 +47,15 @@ public class RedisCacheUtil {
      */
     public <T> void setObject(final String key, final T value, final long timeout, final TimeUnit unit) {
         redisTemplate.opsForValue().set(key, value, timeout, unit);
+    }
+
+    /**
+     * 不存在时写入（SETNX + 过期时间），用于简单互斥锁
+     *
+     * @return 写入成功返回 true，已存在返回 false
+     */
+    public boolean setIfAbsent(final String key, final Object value, final long timeout, final TimeUnit unit) {
+        return Boolean.TRUE.equals(redisTemplate.opsForValue().setIfAbsent(key, value, timeout, unit));
     }
 
     /**

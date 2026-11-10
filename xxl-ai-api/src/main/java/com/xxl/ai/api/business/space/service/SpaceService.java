@@ -29,7 +29,7 @@ public interface SpaceService {
     /**
      * 分页查询空间列表
      */
-    PageModel<SpaceDTO> pageList(int offset, int pagesize, String name, int status);
+    PageModel<SpaceDTO> pageList(int offset, int pagesize, String name, int status, int superagentStatus);
 
     /**
      * 新增空间

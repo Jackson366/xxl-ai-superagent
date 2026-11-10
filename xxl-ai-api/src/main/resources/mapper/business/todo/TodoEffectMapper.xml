@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+	"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.xxl.ai.api.business.todo.mapper.TodoEffectMapper">
+
+	<resultMap id="TodoEffect" type="com.xxl.ai.api.business.todo.model.entity.TodoEffect" >
+		<result column="id" property="id" />
+		<result column="kind" property="kind" />
+		<result column="effect_key" property="effectKey" />
+		<result column="payload" property="payload" />
+		<result column="generation" property="generation" />
+		<result column="attempts" property="attempts" />
+		<result column="due_time" property="dueTime" />
+		<result column="error" property="error" />
+		<result column="owner" property="owner" />
+		<result column="owner_until" property="ownerUntil" />
+		<result column="add_time" property="addTime" />
+		<result column="update_time" property="updateTime" />
+	</resultMap>
+
+	<sql id="Base_Column_List">
+		t.id,
+		t.kind,
+		t.effect_key,
+		t.payload,
+		t.generation,
+		t.attempts,
+		t.due_time,
+		t.error,
+		t.owner,
+		t.owner_until,
+		t.add_time,
+		t.update_time
+	</sql>
+
+	<select id="load" parameterType="java.util.HashMap" resultMap="TodoEffect">
+		SELECT <include refid="Base_Column_List" />
+		FROM xxl_ai_todo_effect AS t
+		WHERE t.id = #{id}
+	</select>
+
+	<insert id="insert" parameterType="com.xxl.ai.api.business.todo.model.entity.TodoEffect" useGeneratedKeys="true" keyProperty="id" >
+		INSERT INTO xxl_ai_todo_effect (
+			kind, effect_key, payload, generation, attempts, due_time, add_time, update_time
+		) VALUES (
+			#{kind}, #{effectKey}, #{payload}, 0, 0, #{dueTime}, NOW(), NOW()
+		)
+	</insert>
+
+	<update id="updateByKey" parameterType="com.xxl.ai.api.business.todo.model.entity.TodoEffect" >
+		UPDATE xxl_ai_todo_effect
+		SET payload = #{payload},
+			generation = generation + 1,
+			attempts = 0,
+			error = NULL,
+			due_time = #{dueTime},
+			update_time = NOW()
+		WHERE kind = #{kind} AND effect_key = #{effectKey}
+	</update>
+
+	<select id="loadByKey" parameterType="java.util.HashMap" resultMap="TodoEffect">
+		SELECT <include refid="Base_Column_List" />
+		FROM xxl_ai_todo_effect AS t
+		WHERE t.kind = #{kind} AND t.effect_key = #{effectKey}
+	</select>
+
+	<select id="listDue" parameterType="java.util.HashMap" resultMap="TodoEffect">
+		SELECT <include refid="Base_Column_List" />
+		FROM xxl_ai_todo_effect AS t
+		WHERE t.kind = #{kind}
+			AND t.due_time &lt;= #{now}
+			AND (t.owner IS NULL OR t.owner_until &lt; #{now})
+		ORDER BY t.id ASC
+		LIMIT #{limit}
+	</select>
+
+	<select id="loadHead" parameterType="java.util.HashMap" resultMap="TodoEffect">
+		SELECT <include refid="Base_Column_List" />
+		FROM xxl_ai_todo_effect AS t
+		WHERE t.kind = #{kind}
+		ORDER BY t.id ASC
+		LIMIT 1
+	</select>
+
+	<update id="claim" parameterType="java.util.HashMap" >
+		UPDATE xxl_ai_todo_effect
+		SET owner = #{owner},
+			owner_until = #{ownerUntil},
+			update_time = NOW()
+		WHERE id = #{id}
+			AND generation = #{generation}
+			AND (owner IS NULL OR owner_until &lt; #{now})
+	</update>
+
+	<delete id="finish" parameterType="java.util.HashMap" >
+		DELETE FROM xxl_ai_todo_effect
+		WHERE id = #{id} AND generation = #{generation}
+	</delete>
+
+	<update id="fail" parameterType="java.util.HashMap" >
+		UPDATE xxl_ai_todo_effect
+		SET attempts = #{attempts},
+			error = #{error},
+			due_time = #{dueTime},
+			owner = NULL,
+			owner_until = NULL,
+			update_time = NOW()
+		WHERE id = #{id} AND generation = #{generation}
+	</update>
+
+	<update id="release" parameterType="java.util.HashMap" >
+		UPDATE xxl_ai_todo_effect
+		SET owner = NULL,
+			owner_until = NULL,
+			update_time = NOW()
+		WHERE id = #{id} AND owner = #{owner}
+	</update>
+
+	<delete id="deleteByKey" parameterType="java.util.HashMap" >
+		DELETE FROM xxl_ai_todo_effect
+		WHERE kind = #{kind} AND effect_key = #{effectKey}
+	</delete>
+
+	<select id="listProblem" parameterType="java.util.HashMap" resultMap="TodoEffect">
+		SELECT <include refid="Base_Column_List" />
+		FROM xxl_ai_todo_effect AS t
+		WHERE t.attempts &gt;= #{minAttempts}
+		ORDER BY t.id ASC
+	</select>
+
+	<update id="releaseByOwner" parameterType="java.util.HashMap" >
+		UPDATE xxl_ai_todo_effect
+		SET owner = NULL,
+			owner_until = NULL,
+			update_time = NOW()
+		WHERE owner = #{owner}
+	</update>
+
+</mapper>

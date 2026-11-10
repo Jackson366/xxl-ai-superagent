@@ -41,11 +41,13 @@ public interface SpaceMapper {
     List<Space> pageList(@Param("offset") int offset,
                          @Param("pagesize") int pagesize,
                          @Param("name") String name,
-                         @Param("status") int status);
+                         @Param("status") int status,
+                         @Param("superagentStatus") int superagentStatus);
 
     int pageListCount(@Param("offset") int offset,
                       @Param("pagesize") int pagesize,
                       @Param("name") String name,
-                      @Param("status") int status);
+                      @Param("status") int status,
+                      @Param("superagentStatus") int superagentStatus);
 
 }

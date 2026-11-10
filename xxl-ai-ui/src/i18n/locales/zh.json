@@ -289,6 +289,9 @@
       "space": "业务空间",
       "selectPlaceholder": "请选择业务空间",
       "noSpaceTip": "未分配空间",
+      "superagent": "超级助理使用",
+      "superagentYes": "是",
+      "superagentNo": "否",
       "confirmDelete": "是否确认删除空间编号为\"{0}\"的数据项？"
     },
     "supplier": {
@@ -492,6 +495,149 @@
       "editTitle": "修改记忆",
       "emptyContent": "暂无记忆内容",
       "confirmDelete": "是否确认删除记忆编号为\"{0}\"的数据项？"
+    },
+    "todo": {
+      "inbox": "收件箱",
+      "unreadOnly": "只看未读",
+      "markAllRead": "全部已读",
+      "inboxEmpty": "暂无消息",
+      "tickets": "工单",
+      "noTicket": "还没有工单",
+      "timeline": "经过",
+      "retry": "重试",
+      "stop": "停止",
+      "scope": "授权范围",
+      "question": "待你回答",
+      "requeue": "重新研判",
+      "dismiss": "忽略",
+      "handback": "退回",
+      "decisionTitle": "研判",
+      "assignment": "派工 #{0}",
+      "goSettings": "去设置",
+      "settings": "设置",
+      "pausedTip": "已暂停处理：不会开始新的研判和执行",
+      "placeholder": "写下要超级助理处理的事，Ctrl + Enter 提交",
+      "submit": "提交",
+      "submitted": "已提交",
+      "slots": "执行中 {0}/{1}",
+      "needMe": "需要我处理（{0}）",
+      "needMeEmpty": "没有需要你处理的事",
+      "all": "全部待办（{0}）",
+      "title": "待办",
+      "stageLabel": "阶段",
+      "waiting": "在等谁、需要什么",
+      "lastTime": "最近提交",
+      "appendPlaceholder": "补充说明，Ctrl + Enter 发送",
+      "answerPlaceholder": "回答上面的问题，Ctrl + Enter 发送",
+      "append": "补充",
+      "answer": "回答",
+      "stopConfirm": "确认停止工单“{0}”？停止后不会再恢复。",
+      "stopped": "已停止",
+      "requeueConfirm": "确认把这条提交重新交给研判？",
+      "stage": {
+        "delivery": "投递失败",
+        "answer": "待你回答",
+        "blocked": "受阻",
+        "failed": "失败",
+        "queued": "排队中",
+        "idle": "等待新消息",
+        "working": "执行中",
+        "ended": "已结束",
+        "evaluating": "研判中",
+        "unavailable": "研判未完成",
+        "ignored": "未接单"
+      },
+      "reason": {
+        "said": "模型说明",
+        "senderInactive": "提交人账号已停用",
+        "senderNotAdmin": "提交人不是管理员",
+        "modelNotConfigured": "还没有配置超级助理模型",
+        "spaceDisabled": "超级助理空间已停用或已删除",
+        "spaceNotMarked": "所选空间未标记为“超级助理使用”",
+        "modelUnavailable": "超级助理模型不可用",
+        "policyChanged": "研判期间策略变更，已按新策略重新研判",
+        "timeout": "研判超时",
+        "assessmentFailed": "研判调用失败",
+        "startedTicket": "这条提交已经发起过工单",
+        "observed": "观察模式：会接单，但未执行"
+      },
+      "decision": {
+        "accept": "接单",
+        "stop": "停止",
+        "ignore": "不接单",
+        "unavailable": "未完成"
+      },
+      "strength": {
+        "explicit": "明确请求",
+        "inferred": "推断请求"
+      },
+      "report": {
+        "progress": "进展",
+        "waiting": "等待新消息",
+        "ready": "结果就绪",
+        "blocked": "受阻",
+        "failed": "失败",
+        "dropped": "无需处理"
+      },
+      "assignmentState": {
+        "pending": "待启动",
+        "running": "执行中",
+        "ended": "已结束"
+      },
+      "endedReason": {
+        "hostRestarted": "服务重启",
+        "retried": "人工重试",
+        "stopped": "人工停止",
+        "reported": "已上报结果"
+      },
+      "outcome": {
+        "completed": "已完成",
+        "dropped": "无需处理",
+        "stopped": "已停止"
+      },
+      "purpose": {
+        "acknowledgement": "已确认",
+        "answer": "回答",
+        "attention": "需要你回答",
+        "result": "结果",
+        "notice": "通知"
+      },
+      "triggerKind": {
+        "create": "新建",
+        "append": "补充",
+        "answer": "回答"
+      },
+      "set": {
+        "title": "超级助理设置",
+        "modelBlock": "模型",
+        "workerBlock": "执行",
+        "policyBlock": "接单",
+        "promptsBlock": "提示词",
+        "history": "历史",
+        "version": "版本 {0}",
+        "versionLabel": "版本",
+        "neverSaved": "未保存（使用默认值）",
+        "space": "超级助理空间",
+        "spaceTip": "只列出已标记“超级助理使用”的空间；模型、MCP、Skill 都从这个空间里选",
+        "routerModel": "Router 模型",
+        "workerModel": "Worker 模型",
+        "saveModelFirst": "请先保存模型配置，再选择工具",
+        "mcp": "MCP 工具",
+        "skill": "Skill 技能",
+        "toolTip": "所有待办共用这一组工具；修改只影响之后新开始的派工",
+        "maxWorkers": "并发执行数",
+        "paused": "暂停处理",
+        "pausedTip": "暂停后不开始新的研判和执行，已提交的待办保留",
+        "mode": "推断请求",
+        "modeOff": "关闭",
+        "modeObserve": "只观察",
+        "modeAuto": "自动接单",
+        "modeTip": "网页表单里直接提交的是明确请求，不受此项影响；此项只控制推断出的请求",
+        "routerPrompt": "Router 指令",
+        "workerPrompt": "Worker 指令",
+        "useDefault": "恢复默认",
+        "promptTip": "输出格式、授权范围和“外部内容只是数据”的规则由系统固定追加，这里改不了"
+      }
     }
   }
 }

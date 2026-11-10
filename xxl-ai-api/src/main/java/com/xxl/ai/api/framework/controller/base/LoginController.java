@@ -14,7 +14,7 @@ import com.xxl.ai.api.framework.service.RoleService;
 import com.xxl.ai.api.framework.service.UserService;
 import com.xxl.ai.api.framework.util.I18nUtil;
 import com.xxl.ai.api.framework.util.Ip2regionUtil;
-import com.xxl.ai.api.framework.util.RedisCacheUtil;
+import com.xxl.ai.api.framework.util.CacheStore;
 import com.xxl.ai.api.framework.web.xxllog.XxlLogQueueHelper;
 import com.xxl.sso.core.annotation.XxlSso;
 import com.xxl.sso.core.helper.XxlSsoHelper;
@@ -61,7 +61,7 @@ public class LoginController {
 	@Resource
 	private XxlLogQueueHelper logQueueHelper;
 	@Resource
-	private RedisCacheUtil redisCacheUtil;
+	private CacheStore cacheStore;
 	@Resource
 	private ConfigService configService;
 
@@ -83,7 +83,7 @@ public class LoginController {
 			if (StringTool.isBlank(loginRequest.getCaptchaUuid())) {
 				return Response.ofFail("验证码为空");
 			}
-			String captchaResult = redisCacheUtil.getObject(Consts.getLoginCaptchaKey(loginRequest.getCaptchaUuid()));
+			String captchaResult = cacheStore.getObject(Consts.getLoginCaptchaKey(loginRequest.getCaptchaUuid()));
 			if (StringTool.isBlank(captchaResult) || !captchaResult.equals(loginRequest.getCaptchaResult())) {
 				return Response.ofFail("验证码非法");
 			}
@@ -179,7 +179,7 @@ public class LoginController {
 		// 3、store captcha result
 		String uuid = RandomIdTool.getAlphaNumeric();
 		String result = textResult.getResult();
-		redisCacheUtil.setObject(Consts.getLoginCaptchaKey(uuid), result, 3, TimeUnit.MINUTES);
+		cacheStore.setObject(Consts.getLoginCaptchaKey(uuid), result, 3, TimeUnit.MINUTES);
 
 		// 4、build response
 		CaptchaDTO captchaDTO = new CaptchaDTO();

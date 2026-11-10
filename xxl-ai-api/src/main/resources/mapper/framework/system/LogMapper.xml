@@ -76,11 +76,11 @@
         </trim>
     </select>
 
-    <!-- 按日期统计日志趋势 -->
+    <!-- 按日期统计日志趋势（日期函数取 MySQL / H2 通用写法） -->
     <select id="trendList" parameterType="java.util.Map" resultType="java.util.LinkedHashMap">
-        SELECT DATE_FORMAT(t.`add_time`, '%Y-%m-%d') AS `date`, COUNT(1) AS `count`
+        SELECT CAST(CAST(t.`add_time` AS DATE) AS CHAR(10)) AS `date`, COUNT(1) AS `count`
         FROM xxl_ai_log AS t
-        WHERE t.`add_time` >= DATE_SUB(CURDATE(), INTERVAL #{days} DAY)
+        WHERE t.`add_time` >= TIMESTAMPADD(DAY, 0 - #{days}, CURDATE())
         GROUP BY `date` ORDER BY `date` ASC
     </select>
 

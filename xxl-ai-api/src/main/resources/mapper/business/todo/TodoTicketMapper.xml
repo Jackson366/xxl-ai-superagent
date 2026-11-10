@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+	"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.xxl.ai.api.business.todo.mapper.TodoTicketMapper">
+
+	<resultMap id="TodoTicket" type="com.xxl.ai.api.business.todo.model.entity.TodoTicket" >
+		<result column="id" property="id" />
+		<result column="user_id" property="userId" />
+		<result column="thread_id" property="threadId" />
+		<result column="decision_id" property="decisionId" />
+		<result column="origin_trigger_id" property="originTriggerId" />
+		<result column="title" property="title" />
+		<result column="mandate" property="mandate" />
+		<result column="attention" property="attention" />
+		<result column="undelivered" property="undelivered" />
+		<result column="delivery_error" property="deliveryError" />
+		<result column="worker_model" property="workerModel" />
+		<result column="ended_time" property="endedTime" />
+		<result column="ended_by" property="endedBy" />
+		<result column="ended_outcome" property="endedOutcome" />
+		<result column="ended_reason" property="endedReason" />
+		<result column="add_time" property="addTime" />
+		<result column="update_time" property="updateTime" />
+	</resultMap>
+
+	<sql id="Base_Column_List">
+		t.id,
+		t.user_id,
+		t.thread_id,
+		t.decision_id,
+		t.origin_trigger_id,
+		t.title,
+		t.mandate,
+		t.attention,
+		t.undelivered,
+		t.delivery_error,
+		t.worker_model,
+		t.ended_time,
+		t.ended_by,
+		t.ended_outcome,
+		t.ended_reason,
+		t.add_time,
+		t.update_time
+	</sql>
+
+	<insert id="insert" parameterType="com.xxl.ai.api.business.todo.model.entity.TodoTicket" useGeneratedKeys="true" keyProperty="id" >
+		INSERT INTO xxl_ai_todo_ticket (
+			user_id, thread_id, decision_id, origin_trigger_id, title, mandate, attention, undelivered, delivery_error, worker_model, ended_time, ended_by, ended_outcome, ended_reason, add_time, update_time
+		) VALUES (
+			#{userId}, #{threadId}, #{decisionId}, #{originTriggerId}, #{title}, #{mandate}, #{attention}, #{undelivered}, #{deliveryError}, #{workerModel}, #{endedTime}, #{endedBy}, #{endedOutcome}, #{endedReason}, NOW(), NOW()
+		)
+	</insert>
+
+	<update id="update" parameterType="com.xxl.ai.api.business.todo.model.entity.TodoTicket" >
+		UPDATE xxl_ai_todo_ticket
+		SET user_id = #{userId},
+			thread_id = #{threadId},
+			decision_id = #{decisionId},
+			origin_trigger_id = #{originTriggerId},
+			title = #{title},
+			mandate = #{mandate},
+			attention = #{attention},
+			undelivered = #{undelivered},
+			delivery_error = #{deliveryError},
+			worker_model = #{workerModel},
+			ended_time = #{endedTime},
+			ended_by = #{endedBy},
+			ended_outcome = #{endedOutcome},
+			ended_reason = #{endedReason},
+			update_time = NOW()
+		WHERE id = #{id}
+	</update>
+
+	<select id="load" parameterType="java.util.HashMap" resultMap="TodoTicket">
+		SELECT <include refid="Base_Column_List" />
+		FROM xxl_ai_todo_ticket AS t
+		WHERE t.id = #{id}
+	</select>
+
+	<select id="loadForUpdate" parameterType="java.util.HashMap" resultMap="TodoTicket">
+		SELECT <include refid="Base_Column_List" />
+		FROM xxl_ai_todo_ticket AS t
+		WHERE t.id = #{id}
+		FOR UPDATE
+	</select>
+
+	<select id="loadByOriginTrigger" parameterType="java.util.HashMap" resultMap="TodoTicket">
+		SELECT <include refid="Base_Column_List" />
+		FROM xxl_ai_todo_ticket AS t
+		WHERE t.origin_trigger_id = #{originTriggerId}
+	</select>
+
+	<select id="listByThread" parameterType="java.util.HashMap" resultMap="TodoTicket">
+		SELECT <include refid="Base_Column_List" />
+		FROM xxl_ai_todo_ticket AS t
+		WHERE t.thread_id = #{threadId}
+		ORDER BY t.id ASC
+	</select>
+
+	<select id="listLive" resultMap="TodoTicket">
+		SELECT <include refid="Base_Column_List" />
+		FROM xxl_ai_todo_ticket AS t
+		WHERE t.ended_time IS NULL
+		ORDER BY t.id ASC
+	</select>
+
+</mapper>

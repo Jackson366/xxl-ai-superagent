@@ -1,6 +1,6 @@
 package com.xxl.ai.api.framework.web.xxlsso;
 
-import com.xxl.ai.api.framework.util.RedisCacheUtil;
+import com.xxl.ai.api.framework.util.CacheStore;
 import com.xxl.sso.core.model.LoginInfo;
 import com.xxl.sso.core.store.LoginStore;
 import com.xxl.tool.core.StringTool;
@@ -12,10 +12,7 @@ import org.springframework.stereotype.Component;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Simple LoginStore
- *
- * 1、store by database；
- * 2、If you have higher performance requirements, it is recommended to use RedisLoginStore；
+ * LoginStore：登录态存于 CacheStore（默认 Redis；local profile 为进程内缓存，重启后需重新登录）
  *
  * @author xuxueli 2025-08-03
  */
@@ -27,7 +24,7 @@ public class RedisLoginStore implements LoginStore {
     private String storeKeyPrefix;
 
     @Resource
-    private RedisCacheUtil redisCacheUtil;
+    private CacheStore cacheStore;
 
     /**
      * parse store key from userId
@@ -66,7 +63,7 @@ public class RedisLoginStore implements LoginStore {
         String storeKey = parseStoreKey(loginInfo.getUserId());
 
         // write
-        redisCacheUtil.setObject(storeKey, loginInfo, seconds, TimeUnit.SECONDS);
+        cacheStore.setObject(storeKey, loginInfo, seconds, TimeUnit.SECONDS);
         return Response.ofSuccess();
     }
 
@@ -87,7 +84,7 @@ public class RedisLoginStore implements LoginStore {
         }
 
         // read
-        LoginInfo loginInfoStore = redisCacheUtil.getObject(storeKey);
+        LoginInfo loginInfoStore = cacheStore.getObject(storeKey);
         if (loginInfoStore == null) {
             return Response.ofFail("loginInfo not exists.");
         }
@@ -104,7 +101,7 @@ public class RedisLoginStore implements LoginStore {
         long seconds = (loginInfo.getExpireTime() - System.currentTimeMillis()) / 1000;
 
         // write
-        redisCacheUtil.setObject(storeKey, loginInfoStore, seconds, TimeUnit.SECONDS);
+        cacheStore.setObject(storeKey, loginInfoStore, seconds, TimeUnit.SECONDS);
         return Response.ofSuccess();
     }
 
@@ -120,7 +117,7 @@ public class RedisLoginStore implements LoginStore {
         String storeKey = parseStoreKey(userId);
 
         // remove
-        redisCacheUtil.delete(storeKey);
+        cacheStore.delete(storeKey);
         return Response.ofSuccess();
     }
 
@@ -136,14 +133,14 @@ public class RedisLoginStore implements LoginStore {
         String storeKey = parseStoreKey(userId);
 
         // read
-        LoginInfo loginInfo = redisCacheUtil.getObject(storeKey);
+        LoginInfo loginInfo = cacheStore.getObject(storeKey);
         if (loginInfo == null) {
             return Response.ofFail("loginInfo not exists.");
         }
 
         // valid expire time
         if (loginInfo.getExpireTime() < System.currentTimeMillis()) {
-            redisCacheUtil.delete(storeKey);
+            cacheStore.delete(storeKey);
             return Response.ofFail("loginInfo is timeout");
         }
 

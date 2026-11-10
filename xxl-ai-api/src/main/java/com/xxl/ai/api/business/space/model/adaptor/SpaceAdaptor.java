@@ -26,6 +26,7 @@ public class SpaceAdaptor {
         space.setName(dto.getName());
         space.setCode(dto.getCode());
         space.setStatus(dto.getStatus());
+        space.setSuperagentStatus(dto.getSuperagentStatus());
         space.setRemark(dto.getRemark());
         return space;
     }
@@ -42,6 +43,7 @@ public class SpaceAdaptor {
         dto.setName(space.getName());
         dto.setCode(space.getCode());
         dto.setStatus(space.getStatus());
+        dto.setSuperagentStatus(space.getSuperagentStatus());
         dto.setRemark(space.getRemark());
         dto.setAddTime(DateTool.formatDateTime(space.getAddTime()));
         dto.setUpdateTime(DateTool.formatDateTime(space.getUpdateTime()));

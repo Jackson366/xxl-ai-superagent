@@ -46,12 +46,17 @@ interface RoutesState {
    * dynamicRoutes 拍平处理后版本：供路由初始化 router.addRoute 取用
    */
   flattenRoutes: RouteData[]
+  /**
+   * 当前用户的首页：第一个可见菜单（管理员为超级助理，普通用户为首页）
+   */
+  homePath: string
 }
 
 const useRoutesStore = defineStore('routes', {
   state: (): RoutesState => ({
     dynamicRoutes: [],
-    flattenRoutes: []
+    flattenRoutes: [],
+    homePath: ''
   }),
   getters: {
     /**
@@ -75,6 +80,9 @@ const useRoutesStore = defineStore('routes', {
         // 拍平：供 router.addRoute 直接取用
         this.flattenRoutes = transformRoutes(JSON.parse(JSON.stringify(raw)), true)
         setFirstAffix(this.flattenRoutes)
+
+        // 首页：第一个可见菜单
+        this.homePath = firstMenuPath(dynamicRoutes) || ''
       })
     },
     /**
@@ -85,6 +93,23 @@ const useRoutesStore = defineStore('routes', {
     }
   }
 })
+
+/**
+ * 第一个可见菜单的路径：跳过隐藏菜单与外链，目录取其第一个可见子菜单
+ */
+function firstMenuPath(routes: RouteData[], parent = ''): string | undefined {
+  for (const route of routes) {
+    if (route.hidden || !route.path || /^https?:/.test(route.path)) continue
+    const path = route.path.startsWith('/') ? route.path : `${parent}/${route.path}`
+    if (route.children?.length) {
+      const child = firstMenuPath(route.children, path)
+      if (child) return child
+      continue
+    }
+    return path
+  }
+  return undefined
+}
 
 /**
  * 首个标签 affix 固定：首个路由标记 affix，作为 TagsView 固定首页标签

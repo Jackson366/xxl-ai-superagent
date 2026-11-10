@@ -28,10 +28,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.SmartLifecycle;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.core.task.TaskRejectedException;
-import org.springframework.data.domain.Range;
-import org.springframework.data.redis.connection.RedisStreamCommands;
-import org.springframework.data.redis.connection.stream.*;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -39,7 +35,6 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -47,17 +42,17 @@ import java.util.concurrent.atomic.AtomicBoolean;
  *
  * 【完整会话流程】
  * 1、发送（请求侧，业务 ChatService 调用）：
- *    {@link #submit} 投递任务（XADD 任务队列）→ {@link #open} 打开 SSE 连接；
+ *    {@link #submit} 投递任务（写任务队列）→ {@link #open} 打开 SSE 连接；
  * 2、生成（worker 侧，{@link #start} 拉起的消费线程）：
  *    {@link #consumeLoop} → {@link #handleTask} → {@link #llmChat}（Agent 校验/装配 → LlmChatTool 流式）；
- *    增量经回调 → {@link #appendResult} 写结果流；结束 → {@link #saveAssistant} 回填消息 + {@link #ackTask} 确认；
+ *    增量经回调 → {@link #appendResult} 写结果流；结束 → {@link #saveAssistant} 回填消息 + 确认任务；
  * 3、下发与续传（连接侧）：
- *    {@link #streamResult} 从结果流 XREAD 转发为 SSE；携带 lastEventId 时从断点之后重放，不重新生成。
+ *    {@link #streamResult} 阻塞读取结果流并转发为 SSE；携带 lastEventId 时从断点之后重放，不重新生成。
  *
  * 【组件协作】
  *   业务：ChatService（会话校验）、SessionMsgMapper/SessionMapper（回填消息与对话活跃时间）；
  *   harness 兄弟工具：LlmChatTool（模型执行）、RagTool（RAG）、McpToolFactory/SkillToolFactory（工具装配）；
- *   存储：Redis 任务队列 xxl:ai:chat:tasks + 结果流 xxl:ai:chat:result:{msgId}。
+ *   存储：{@link ChatStreamQueue} 任务队列 + 结果流 xxl:ai:chat:result:{msgId}（默认 Redis Stream，local profile 为进程内）。
  *
  * 【关键约定】
  *   助手消息主键 msgId 同时作为结果流标识；生成与连接解耦，任意节点可转发/续传，worker 可独立扩容。
@@ -91,10 +86,6 @@ public class ChatStreamTool implements SmartLifecycle {
     /** 事件名：终态（生成失败，data 为错误提示） */
     public static final String EVENT_ERROR = "error";
 
-    /** 任务队列：stream key */
-    private static final String AI_CHAT_TASK_TOPIC = "xxl:ai:chat:tasks";
-    /** 任务队列：消费组 group */
-    private static final String AI_CHAT_TASK_CONSUME_GROUP = "default-group";
     /** 任务结果：stream key 前缀（+ msgId） */
     private static final String AI_CHAT_TASK_RESULT = "xxl:ai:chat:result:";
 
@@ -103,9 +94,7 @@ public class ChatStreamTool implements SmartLifecycle {
     /** 生成失败提示文案 key（追加到失败回复正文末尾） */
     private static final String FAILED_NOTICE_KEY = "chat_failed_notice";
 
-    /** 任务队列最大长度（近似裁剪） */
-    private static final long TASK_STREAM_MAXLEN = 5000;
-    /** XREAD 阻塞窗口(ms)：空闲轮询/心跳间隔，须小于 spring.data.redis.timeout */
+    /** 阻塞读窗口(ms)：空闲轮询/心跳间隔，须小于 spring.data.redis.timeout */
     private static final long READ_BLOCK_MILLIS = 5000;
     /** 单次批量读取条数 */
     private static final long READ_BATCH_SIZE = 50;
@@ -113,7 +102,7 @@ public class ChatStreamTool implements SmartLifecycle {
     private static final long RECLAIM_INTERVAL_MILLIS = 60_000;
 
     @Resource
-    private StringRedisTemplate stringRedisTemplate;
+    private ChatStreamQueue chatStreamQueue;
     /** 会话校验单一来源；与 ChatServiceImpl 互相依赖，用 @Lazy 打破（生成器仍随容器启动托管线程） */
     @Lazy
     @Resource
@@ -164,7 +153,7 @@ public class ChatStreamTool implements SmartLifecycle {
     private volatile boolean running = false;
     private final List<Thread> workers = new ArrayList<>();
 
-    /** SSE 转发线程池（单个转发阻塞于 XREAD 直到流结束，故用有界池控制并发） */
+    /** SSE 转发线程池（单个转发阻塞于结果流读取直到流结束，故用有界池控制并发） */
     private ThreadPoolTaskExecutor sseExecutor;
 
 
@@ -181,8 +170,8 @@ public class ChatStreamTool implements SmartLifecycle {
         // 建 SSE 转发线程池
         initSseExecutor();
 
-        // 建任务消费组（幂等）：createGroup 自带 MKSTREAM，流缺失时自动建流；组已存在时以 BUSYGROUP 收敛
-        initGroup();
+        // 初始化任务队列（幂等）
+        chatStreamQueue.initTaskQueue();
 
         // 拉起 workerCount 个消费线程（守护线程，跨节点竞争消费）
         for (int i = 0; i < workerCount; i++) {
@@ -251,41 +240,11 @@ public class ChatStreamTool implements SmartLifecycle {
         }
     }
 
-    /**
-     * 初始化任务消费组（幂等）：createGroup 自带 MKSTREAM，流缺失时自动建流；组已存在时以 BUSYGROUP 收敛
-     */
-    private void initGroup() {
-        try {
-            stringRedisTemplate.opsForStream().createGroup(
-                    AI_CHAT_TASK_TOPIC,
-                    ReadOffset.from("0"),
-                    AI_CHAT_TASK_CONSUME_GROUP
-            );
-        } catch (Exception e) {
-            // BUSYGROUP：消费组已存在，正常（Spring 包装后该标识可能仅在 cause 链中）
-            if (!isBusyGroup(e)) {
-                logger.warn("Chat 任务消费组初始化失败, err={}", e.getMessage());
-            }
-        }
-    }
-
-    /**
-     * 判断异常链是否来自「消费组已存在」（BUSYGROUP）
-     */
-    private static boolean isBusyGroup(Throwable e) {
-        for (Throwable t = e; t != null; t = t.getCause()) {
-            if (String.valueOf(t.getMessage()).contains("BUSYGROUP")) {
-                return true;
-            }
-        }
-        return false;
-    }
-
     // ==================== 业务入口操作：发送、续传、取消、错误 ====================
 
     /**
      * 投递生成任务： 【1/3：user -> [add] task-queue】`
-     *  - 本质：通过 Redis Stream XADD 投递任务（worker 以消费组身份竞争消费）；
+     *  - 本质：投递到任务队列（worker 竞争消费）；
      */
     public void submit(long msgId, long agentId, long sessionId, String content) {
         addTask(msgId, agentId, sessionId, content);
@@ -293,7 +252,7 @@ public class ChatStreamTool implements SmartLifecycle {
 
     /**
      * 打开 SSE 连接： 【2/3：async-thread -> [pull] result-queue -> [send] sse 】`
-     *  - 本质：通过 Redis Stream XREAD 阻塞拉取结果流并转发为 SSE；
+     *  - 本质：阻塞拉取结果流并转发为 SSE；
      *
      * @param msgId 助手消息主键（结果流标识）
      * @param lastEventId 上次接收到的事件 ID，用于续传
@@ -346,10 +305,10 @@ public class ChatStreamTool implements SmartLifecycle {
     }
 
 
-    // ==================== 会话队列操作（Redis Stream）：新增、查询、ACK状态 ====================
+    // ==================== 会话队列操作：新增 ====================
 
     /**
-     * 投递生成任务：XADD 任务队列
+     * 投递生成任务：写入任务队列
      *
      * @param msgId 助手消息主键（结果流标识）
      * @param agentId Agent 主键
@@ -357,74 +316,11 @@ public class ChatStreamTool implements SmartLifecycle {
      * @param content 消息内容
      */
     public void addTask(long msgId, long agentId, long sessionId, String content) {
-        stringRedisTemplate.opsForStream().add(
-                StreamRecords.mapBacked(Map.of(
-                                "msgId", String.valueOf(msgId),
-                                "agentId", String.valueOf(agentId),
-                                "sessionId", String.valueOf(sessionId),
-                                "content", content))
-                        .withStreamKey(AI_CHAT_TASK_TOPIC),
-                RedisStreamCommands.XAddOptions
-                        .maxlen(TASK_STREAM_MAXLEN)
-                        .approximateTrimming(true)
-        );
-    }
-
-    /**
-     * 拉取未确认任务：XREAD GROUP，同组竞争消费，阻塞拉取 1 条
-     *
-     * @param consumer 消费者名（实例标识 + 序号），统一消费组下
-     */
-    private List<MapRecord<String, Object, Object>> pollTasks(String consumer) {
-        return stringRedisTemplate.opsForStream().read(
-                Consumer.from(AI_CHAT_TASK_CONSUME_GROUP, consumer),
-                StreamReadOptions
-                        .empty()
-                        .count(1)
-                        .block(Duration.ofMillis(READ_BLOCK_MILLIS)),
-                StreamOffset.create(AI_CHAT_TASK_TOPIC, ReadOffset.lastConsumed()));
-    }
-
-    /**
-     * 确认任务已处理：XACK，使其从消费组 PEL 中移除
-     */
-    private void ackTask(RecordId recordId) {
-        stringRedisTemplate.opsForStream().acknowledge(
-                AI_CHAT_TASK_TOPIC,
-                AI_CHAT_TASK_CONSUME_GROUP,
-                recordId
-        );
-    }
-
-    /**
-     * 认领长时间未确认的任务：
-     */
-    private List<MapRecord<String, Object, Object>> reclaimTasks(String consumer, Duration minIdle) {
-        try {
-            // 查询消费组 PEL 中所有未确认的消息，按 idle 时间过滤出超时的消息
-            PendingMessages pending = stringRedisTemplate.opsForStream().pending(
-                    AI_CHAT_TASK_TOPIC,
-                    AI_CHAT_TASK_CONSUME_GROUP,
-                    Range.unbounded(),
-                    100,
-                    minIdle
-            );
-            if (pending == null || pending.isEmpty()) {
-                return Collections.emptyList();
-            }
-
-            // 提取 RecordId 数组
-            RecordId[] ids = new RecordId[pending.size()];
-            for (int i = 0; i < pending.size(); i++) {
-                ids[i] = pending.get(i).getId();
-            }
-
-            // XCLAIM 批量认领：（将这些超时的消息从其他消费者的 PEL 中转移到当前消费者的 PEL 中，以便当前消费者可以重新处理这些消息。）
-            return stringRedisTemplate.opsForStream().claim(AI_CHAT_TASK_TOPIC, AI_CHAT_TASK_CONSUME_GROUP, consumer, minIdle, ids);
-        } catch (Exception e) {
-            logger.warn("Chat 任务认领失败, err={}", e.getMessage());
-            return Collections.emptyList();
-        }
+        chatStreamQueue.addTask(Map.of(
+                "msgId", String.valueOf(msgId),
+                "agentId", String.valueOf(agentId),
+                "sessionId", String.valueOf(sessionId),
+                "content", content));
     }
 
     // ==================== 会话消费操作：对话Queue消费 + LLM处理 + 结果Queue写入 ====================
@@ -447,25 +343,20 @@ public class ChatStreamTool implements SmartLifecycle {
                     // 认领空闲阈值：生成最长时长 + 60s（只认领明显超时的 PEL 消息，在途任务不会误抢）
                     Duration reclaimIdle = Duration.ofMillis(streamTimeout + 60_000);
                     // process
-                    for (MapRecord<String, Object, Object> record : reclaimTasks(consumer, reclaimIdle)) {
-                        handleTask(record);
+                    for (ChatStreamQueue.Entry task : chatStreamQueue.reclaimTasks(consumer, reclaimIdle)) {
+                        handleTask(task);
                     }
                 }
 
                 // 2.2、阻塞拉取新任务：同组竞争消费
-                List<MapRecord<String, Object, Object>> records = pollTasks(consumer);
-                if (records != null) {
-                    // process
-                    for (MapRecord<String, Object, Object> record : records) {
-                        handleTask(record);
-                    }
+                for (ChatStreamQueue.Entry task : chatStreamQueue.pollTask(consumer, READ_BLOCK_MILLIS)) {
+                    handleTask(task);
                 }
             } catch (Throwable e) {
-                // 3、消费异常自愈：Redis 数据被清空（flush/重启/误删）导致任务流与消费组丢失时自动重建，其余异常仅记录；
+                // 3、消费异常自愈：任务队列丢失（如 Redis flush/重启/误删）时自动重建，其余异常仅记录；
                 try {
-                    if (Boolean.FALSE.equals(stringRedisTemplate.hasKey(AI_CHAT_TASK_TOPIC))) {
-                        logger.warn("Chat 任务流/消费组缺失，自动重建消费组...");
-                        initGroup();
+                    if (chatStreamQueue.recoverTaskQueue()) {
+                        logger.warn("Chat 任务队列缺失，已自动重建");
                     } else {
                         logger.warn("Chat worker 消费异常, consumer={}, err={}", consumer, e.getMessage());
                     }
@@ -483,20 +374,20 @@ public class ChatStreamTool implements SmartLifecycle {
      * 消费单条任务：解析 → 生成（增量写结果流）→ 回填消息 → 写终态 → 确认
      *
      *  - 成功回填 status=1；失败或人工终止回填 status=2（保留已生成的部分内容，终止时追加终止提示），
-     *  - 失败写 {@code error} 终态；无论成败都写 {@code done} 终态并 XACK。bootstrap 记录无 msgId，直接确认丢弃。
+     *  - 失败写 {@code error} 终态；无论成败都写 {@code done} 终态并确认任务。bootstrap 记录无 msgId，直接确认丢弃。
      */
-    private void handleTask(MapRecord<String, Object, Object> record) {
+    private void handleTask(ChatStreamQueue.Entry task) {
 
         // 1、解析任务参数
-        Map<Object, Object> fields = record.getValue();
+        Map<String, String> fields = task.fields();
         long msgId = parseLong(fields.get("msgId"));
         if (msgId <= 0) {
-            ackTask(record.getId());
+            chatStreamQueue.ackTask(task.id());
             return;
         }
         long sessionId = parseLong(fields.get("sessionId"));
         long agentId = parseLong(fields.get("agentId"));
-        String content = str(fields.get("content"));
+        String content = fields.get("content");
 
         // 2、登记运行上下文：（供终止定位生成线程与工具进程），并累积增量以便失败/终止回填
         RunContext context = new RunContext(Thread.currentThread(), skillToolFactory.newShellTracker(agentId), new AtomicBoolean());
@@ -557,10 +448,10 @@ public class ChatStreamTool implements SmartLifecycle {
                 saveAssistant(msgId, sessionId, chatText, SessionConstant.MSG_STATUS_DONE);
             }
 
-            // 7、写终态（done/error）并 XACK，避免客户端 SSE 阻塞等待
+            // 7、写终态（done/error）并确认任务，避免客户端 SSE 阻塞等待
             appendResult(msgId, EVENT_DONE, "");
             // ack 任务，避免 PEL 堆积
-            ackTask(record.getId());
+            chatStreamQueue.ackTask(task.id());
         }
     }
 
@@ -580,7 +471,7 @@ public class ChatStreamTool implements SmartLifecycle {
         return new LlmChatTool.ChatText((content == null ? "" : content) + "\n\n> " + notice + suffix, thinking);
     }
 
-    // ==================== 任务结果队列操作（Redis Stream）： ====================
+    // ==================== 任务结果队列操作： ====================
 
     /**
      * 构建结果流 key：xxl:ai:chat:result:{msgId}
@@ -590,23 +481,21 @@ public class ChatStreamTool implements SmartLifecycle {
     }
 
     /**
-     * 写入结果流条目：XADD 结果流（msgId 作为 stream key 后缀）
+     * 写入结果流条目（msgId 作为结果流 key 后缀）
      */
     private void appendResult(long msgId, String type, String data) {
 
         // 1、写入结果流
         String key = buildResultKey(msgId);
-        stringRedisTemplate.opsForStream().add(StreamRecords
-                .mapBacked(Map.of(
-                        "type", type,
-                        "data", data == null ? "" : data
-                ))
-                .withStreamKey(key));
+        chatStreamQueue.appendResult(key, Map.of(
+                "type", type,
+                "data", data == null ? "" : data
+        ));
 
         // 2、完整终态（done/error）写入时：直接设置 TTL 并清理续期记录；
         long now = System.currentTimeMillis();
         if (EVENT_DONE.equals(type) || EVENT_ERROR.equals(type)) {
-            stringRedisTemplate.expire(key, resultTtlSeconds, TimeUnit.SECONDS);
+            chatStreamQueue.expireResult(key, resultTtlSeconds);
             resultExpireAt.remove(msgId);
             return;
         }
@@ -614,24 +503,17 @@ public class ChatStreamTool implements SmartLifecycle {
         // 3、非终态条目写入时：按半 TTL 续期（避免频繁续期），保证断线/刷新可续传时间窗
         Long last = resultExpireAt.get(msgId);
         if (last == null || now - last >= resultTtlSeconds * 1000 / 2) {
-            stringRedisTemplate.expire(key, resultTtlSeconds, TimeUnit.SECONDS);
+            chatStreamQueue.expireResult(key, resultTtlSeconds);
             resultExpireAt.put(msgId, now);
         }
     }
 
     /**
-     * 查询结果流条目：XREAD 从结果流按 {@code fromId} 之后阻塞读取条目
+     * 查询结果流条目：按 {@code fromId} 之后阻塞读取
      */
-    private List<MapRecord<String, Object, Object>> readResults(long msgId, String fromId) {
+    private List<ChatStreamQueue.Entry> readResults(long msgId, String fromId) {
         String startId = (fromId == null || fromId.isBlank()) ? "0" : fromId;
-        return stringRedisTemplate.opsForStream().read(
-                StreamReadOptions.empty()
-                        .count(READ_BATCH_SIZE)
-                        .block(Duration.ofMillis(READ_BLOCK_MILLIS)),
-                StreamOffset.create(
-                        buildResultKey(msgId),
-                        ReadOffset.from(startId))
-        );
+        return chatStreamQueue.readResults(buildResultKey(msgId), startId, READ_BATCH_SIZE, READ_BLOCK_MILLIS);
     }
 
     // ==================== 任务结构监控 & SSE 转发 ====================
@@ -666,8 +548,8 @@ public class ChatStreamTool implements SmartLifecycle {
                 break;
             }
 
-            // 4.1、阻塞拉取结果流条目（XREAD），异常时连续失败达阈值才中断，客户端可再续传
-            List<MapRecord<String, Object, Object>> records;
+            // 4.1、阻塞拉取结果流条目，异常时连续失败达阈值才中断，客户端可再续传
+            List<ChatStreamQueue.Entry> records;
             try {
                 records = readResults(msgId, fromId);
             } catch (Exception e) {
@@ -690,10 +572,10 @@ public class ChatStreamTool implements SmartLifecycle {
             }
 
             // 4.3、转发结果流条目为 SSE 事件，终态事件（done/error）即结束转发
-            for (MapRecord<String, Object, Object> record : records) {
-                fromId = record.getId().getValue();
-                String type = str(record.getValue().get("type"));
-                String data = str(record.getValue().get("data"));
+            for (ChatStreamQueue.Entry record : records) {
+                fromId = record.id();
+                String type = record.fields().get("type");
+                String data = record.fields().get("data");
                 logger.debug("sendEvent: msgId=" + msgId + ", type=" + type + ", data=" + data);
                 sendEvent(emitter, type, data, fromId, cancelled);
 
@@ -930,13 +812,6 @@ public class ChatStreamTool implements SmartLifecycle {
         } catch (NumberFormatException e) {
             return 0;
         }
-    }
-
-    /**
-     * null 安全字符串转换
-     */
-    private static String str(Object value) {
-        return value == null ? null : String.valueOf(value);
     }
 
     /**

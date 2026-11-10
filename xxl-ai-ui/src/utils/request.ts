@@ -17,7 +17,6 @@ import { tansParams } from '@/utils/common'
 import cache from '@/utils/cache'
 import modal from '@/utils/modal'
 import { useUserStore, useSpaceStore } from '@/store'
-import defaultSettings from '@/default-settings'
 import { t } from '@/i18n'
 import type { Response } from '@/types'
 
@@ -172,8 +171,8 @@ service.interceptors.response.use(
             useUserStore()
               .logout()
               .then(() => {
-                // Hash 模式：跳转首页需带 # 前缀，避免请求服务端路径
-                location.href = '/#' + defaultSettings.homePath
+                // Hash 模式：跳转根路径需带 # 前缀，避免请求服务端路径；首页由登录用户的菜单决定
+                location.href = '/#/'
               })
           })
           .catch(() => {

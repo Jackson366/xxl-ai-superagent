@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+	"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.xxl.ai.api.business.todo.mapper.TodoDecisionMapper">
+
+	<resultMap id="TodoDecision" type="com.xxl.ai.api.business.todo.model.entity.TodoDecision" >
+		<result column="id" property="id" />
+		<result column="eval_id" property="evalId" />
+		<result column="thread_id" property="threadId" />
+		<result column="trigger_ids" property="triggerIds" />
+		<result column="policy_version" property="policyVersion" />
+		<result column="kind" property="kind" />
+		<result column="strength" property="strength" />
+		<result column="reason" property="reason" />
+		<result column="ticket_id" property="ticketId" />
+		<result column="mandate" property="mandate" />
+		<result column="audit" property="audit" />
+		<result column="dismissed" property="dismissed" />
+		<result column="event_time" property="eventTime" />
+		<result column="add_time" property="addTime" />
+		<result column="update_time" property="updateTime" />
+	</resultMap>
+
+	<sql id="Base_Column_List">
+		t.id,
+		t.eval_id,
+		t.thread_id,
+		t.trigger_ids,
+		t.policy_version,
+		t.kind,
+		t.strength,
+		t.reason,
+		t.ticket_id,
+		t.mandate,
+		t.audit,
+		t.dismissed,
+		t.event_time,
+		t.add_time,
+		t.update_time
+	</sql>
+
+	<insert id="insert" parameterType="com.xxl.ai.api.business.todo.model.entity.TodoDecision" useGeneratedKeys="true" keyProperty="id" >
+		INSERT INTO xxl_ai_todo_decision (
+			eval_id, thread_id, trigger_ids, policy_version, kind, strength, reason, ticket_id, mandate, audit, dismissed, event_time, add_time, update_time
+		) VALUES (
+			#{evalId}, #{threadId}, #{triggerIds}, #{policyVersion}, #{kind}, #{strength}, #{reason}, #{ticketId}, #{mandate}, #{audit}, #{dismissed}, #{eventTime}, NOW(), NOW()
+		)
+	</insert>
+
+	<select id="load" parameterType="java.util.HashMap" resultMap="TodoDecision">
+		SELECT <include refid="Base_Column_List" />
+		FROM xxl_ai_todo_decision AS t
+		WHERE t.id = #{id}
+	</select>
+
+	<select id="loadByEvalId" parameterType="java.util.HashMap" resultMap="TodoDecision">
+		SELECT <include refid="Base_Column_List" />
+		FROM xxl_ai_todo_decision AS t
+		WHERE t.eval_id = #{evalId}
+	</select>
+
+	<select id="listByThread" parameterType="java.util.HashMap" resultMap="TodoDecision">
+		SELECT <include refid="Base_Column_List" />
+		FROM xxl_ai_todo_decision AS t
+		WHERE t.thread_id = #{threadId}
+		ORDER BY t.event_time ASC, t.id ASC
+	</select>
+
+	<update id="updateDismissed" parameterType="java.util.HashMap" >
+		UPDATE xxl_ai_todo_decision
+		SET dismissed = 1,
+			update_time = NOW()
+		WHERE id = #{id}
+	</update>
+
+	<update id="updateTicketId" parameterType="java.util.HashMap" >
+		UPDATE xxl_ai_todo_decision
+		SET ticket_id = #{ticketId},
+			update_time = NOW()
+		WHERE id = #{id} AND ticket_id IS NULL
+	</update>
+
+</mapper>

@@ -96,7 +96,6 @@ import Screenfull from './Screenfull.vue'
 import SizeSelect from './SizeSelect.vue'
 import SpaceSelect from './SpaceSelect.vue'
 import { useAppStore, useUserStore, useSettingsStore } from '@/store'
-import defaultSettings from '@/default-settings'
 import { nextTick } from 'vue'
 import { t } from '@/i18n'
 import modal from '@/utils/modal'
@@ -135,8 +134,8 @@ function logout() {
     .confirm(t('layout.nav.logoutConfirm'))
     .then(() => {
       userStore.logout().then(() => {
-        // Hash 模式：跳转首页需带 # 前缀，避免请求服务端路径
-        location.href = '/#' + defaultSettings.homePath
+        // Hash 模式：跳转根路径需带 # 前缀，避免请求服务端路径；首页由登录用户的菜单决定
+        location.href = '/#/'
       })
     })
     .catch(() => {})

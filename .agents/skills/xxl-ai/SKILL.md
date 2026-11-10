@@ -41,6 +41,7 @@ xxl-ai-ui/src
 
 # 本地启动（连接配置见 xxl-ai-api/src/main/resources/application.properties，默认 admin/123456）
 cd xxl-ai-api && mvn spring-boot:run      # 8080
+cd xxl-ai-api && mvn spring-boot:run -Dspring-boot.run.profiles=local   # 8080，免 MySQL/Redis（见下）
 cd xxl-ai-ui && npm i && npm run dev      # 3000（代理 /api → 8080）
 cd xxl-ai-sample && mvn spring-boot:run    # 8091（可选）
 
@@ -51,6 +52,9 @@ java -jar xxl-ai-api/target/xxl-ai-api-*.jar          # http://localhost:8080
 cd docker && docker compose up -d --build              # 或起 docker 栈
 ```
 
+- **local profile（本地调试）**：H2 文件库（MySQL 兼容模式，数据在启动目录 `./data`，首次启动自动执行 `xxl-ai-api/src/main/resources/db/tables_xxl_ai_h2.sql`）+ 进程内缓存/登录态/归档锁/对话流队列，仅单机，重启需重新登录、进行中的对话流丢失；RAG 仍需 Milvus。配置见 `application-local.properties`。
+  - 改 `doc/db/tables_xxl_ai.sql` 须同步 H2 脚本（差异：去掉建库/USE/事务语句、索引名加表名前缀、含 `\n` 的字符串用 `STRINGDECODE()`）。
+  - Mapper SQL 须 MySQL / H2 通用：日期用 `CAST(CAST(x AS DATE) AS CHAR(10))`、`TIMESTAMPADD(DAY, 0 - #{days}, CURDATE())`，`CAST` 字符串须带长度，禁用多表 `UPDATE/DELETE ... JOIN`（改子查询）。
 - 前端为 **Hash 路由**（`/#/xxx`），无需服务端回退；生产 `VITE_APP_BASE_API` 为空、接口在根路径。
 - `xxl-ai-api` / `xxl-ai-sample` 的 Dockerfile 均为 `ADD target/*.jar`：compose 构建前必须完成模块打包，只跑 `-pl xxl-ai-api` 会让 sample 镜像报 `lstat .../target: no such file`。
 

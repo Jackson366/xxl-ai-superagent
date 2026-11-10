@@ -12,6 +12,8 @@ export interface Space {
   code?: string
   /** 状态：0-正常、1-停用 */
   status?: number
+  /** 超级助理使用：0-否、1-是 */
+  superagentStatus?: number
   /** 备注 */
   remark?: string
   addTime?: string
@@ -25,6 +27,7 @@ export interface SpaceQuery {
   pageSize: number
   name?: string
   status: number
+  superagentStatus: number
 }
 
 /** 列表接口请求参数 */

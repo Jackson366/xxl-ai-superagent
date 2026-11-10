@@ -37,8 +37,9 @@ public class SpaceController {
     public Response<PageModel<SpaceDTO>> pageList(@RequestParam(required = false, defaultValue = "0") int offset,
                                                   @RequestParam(required = false, defaultValue = "10") int pagesize,
                                                   String name,
-                                                  @RequestParam(required = false, defaultValue = "-1") int status) {
-        PageModel<SpaceDTO> pageModel = spaceService.pageList(offset, pagesize, name, status);
+                                                  @RequestParam(required = false, defaultValue = "-1") int status,
+                                                  @RequestParam(required = false, defaultValue = "-1") int superagentStatus) {
+        PageModel<SpaceDTO> pageModel = spaceService.pageList(offset, pagesize, name, status, superagentStatus);
         return Response.ofSuccess(pageModel);
     }
 

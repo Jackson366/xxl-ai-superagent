@@ -7,13 +7,14 @@ package com.xxl.ai.api.business.space.model.dto;
  */
 public class SpaceDTO {
 
-    private long id;            /* 空间ID */
-    private String name;        /* 空间名称 */
-    private String code;        /* 空间编码 */
-    private int status;         /* 状态：0-正常、1-停用 */
-    private String remark;      /* 备注 */
-    private String addTime;     /* 新增时间（格式化字符串） */
-    private String updateTime;  /* 更新时间（格式化字符串） */
+    private long id;                /* 空间ID */
+    private String name;            /* 空间名称 */
+    private String code;            /* 空间编码 */
+    private int status;             /* 状态：0-正常、1-停用 */
+    private int superagentStatus;   /* 超级助理使用：0-否、1-是 */
+    private String remark;          /* 备注 */
+    private String addTime;         /* 新增时间（格式化字符串） */
+    private String updateTime;      /* 更新时间（格式化字符串） */
 
     public long getId() {
         return id;
@@ -45,6 +46,14 @@ public class SpaceDTO {
 
     public void setStatus(int status) {
         this.status = status;
+    }
+
+    public int getSuperagentStatus() {
+        return superagentStatus;
+    }
+
+    public void setSuperagentStatus(int superagentStatus) {
+        this.superagentStatus = superagentStatus;
     }
 
     public String getRemark() {

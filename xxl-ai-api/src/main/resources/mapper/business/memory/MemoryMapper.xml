@@ -66,12 +66,12 @@
 		DELETE FROM xxl_ai_memory WHERE agent_id = #{agentId}
 	</delete>
 
-	<!-- 修改记忆内容：join Agent 限定空间归属，避免跨空间越权修改 -->
+	<!-- 修改记忆内容：子查询限定 Agent 空间归属，避免跨空间越权修改（MySQL / H2 通用写法） -->
 	<update id="updateContent" parameterType="java.util.HashMap">
-		UPDATE xxl_ai_memory AS t
-		JOIN xxl_ai_agent AS a ON a.id = t.agent_id
-		SET t.content = #{content}, t.update_time = NOW()
-		WHERE t.id = #{id} AND a.space_id = #{spaceId}
+		UPDATE xxl_ai_memory
+		SET content = #{content}, update_time = NOW()
+		WHERE id = #{id}
+		  AND agent_id IN (SELECT a.id FROM xxl_ai_agent AS a WHERE a.space_id = #{spaceId})
 	</update>
 
 	<select id="load" parameterType="java.util.HashMap" resultMap="Memory">

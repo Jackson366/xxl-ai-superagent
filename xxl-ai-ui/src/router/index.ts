@@ -31,10 +31,10 @@ export const constantRoutes = [
     component: () => import('@/modules/framework/auth/pages/login.vue'),
     hidden: true
   },
-  // 首页：默认跳转 “/index”
+  // 首页：跳转当前用户的第一个菜单；菜单未加载时用默认首页，加载后由守卫纠正
   {
     path: '/',
-    redirect: defaultSettings.homePath
+    redirect: () => useRoutesStore().homePath || defaultSettings.homePath
   },
   // 个人中心：hidden 控制侧栏不显示
   {
@@ -147,7 +147,13 @@ router.beforeEach(async (to, from) => {
           }
         })
 
-        // c、replace: true：注入的路由需当前导航重新匹配，同时避免历史记录残留 “空路由条目”
+        // c、访问根路径：菜单加载前按默认首页重定向过，此时改到当前用户的第一个菜单
+        const homePath = useRoutesStore().homePath
+        if (to.redirectedFrom?.path === '/' && homePath) {
+          return { path: homePath, replace: true }
+        }
+
+        // d、replace: true：注入的路由需当前导航重新匹配，同时避免历史记录残留 “空路由条目”
         return { ...to, replace: true }
       } catch (err) {
         // 路由初始化异常：退出登录
@@ -170,7 +176,8 @@ router.beforeEach(async (to, from) => {
   // 3、未登录：跳转登录页并回传原路径供登录后重定向
 
   NProgress.done()
-  return `/login?redirect=${to.fullPath}`
+  // 访问根路径时不带回跳地址：登录后按新用户的菜单决定首页，避免落到上一位用户的首页
+  return to.redirectedFrom?.path === '/' ? '/login' : `/login?redirect=${to.fullPath}`
 })
 
 // 全局后置拦截

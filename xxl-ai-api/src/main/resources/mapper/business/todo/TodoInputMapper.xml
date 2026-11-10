@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+	"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.xxl.ai.api.business.todo.mapper.TodoInputMapper">
+
+	<resultMap id="TodoInput" type="com.xxl.ai.api.business.todo.model.entity.TodoInput" >
+		<result column="id" property="id" />
+		<result column="ticket_id" property="ticketId" />
+		<result column="kind" property="kind" />
+		<result column="trigger_id" property="triggerId" />
+		<result column="human" property="human" />
+		<result column="content" property="content" />
+		<result column="delivered_to" property="deliveredTo" />
+		<result column="read_time" property="readTime" />
+		<result column="event_time" property="eventTime" />
+		<result column="add_time" property="addTime" />
+		<result column="update_time" property="updateTime" />
+	</resultMap>
+
+	<sql id="Base_Column_List">
+		t.id,
+		t.ticket_id,
+		t.kind,
+		t.trigger_id,
+		t.human,
+		t.content,
+		t.delivered_to,
+		t.read_time,
+		t.event_time,
+		t.add_time,
+		t.update_time
+	</sql>
+
+	<insert id="insert" parameterType="com.xxl.ai.api.business.todo.model.entity.TodoInput" useGeneratedKeys="true" keyProperty="id" >
+		INSERT INTO xxl_ai_todo_input (
+			ticket_id, kind, trigger_id, human, content, delivered_to, read_time, event_time, add_time, update_time
+		) VALUES (
+			#{ticketId}, #{kind}, #{triggerId}, #{human}, #{content}, #{deliveredTo}, #{readTime}, #{eventTime}, NOW(), NOW()
+		)
+	</insert>
+
+	<update id="update" parameterType="com.xxl.ai.api.business.todo.model.entity.TodoInput" >
+		UPDATE xxl_ai_todo_input
+		SET ticket_id = #{ticketId},
+			kind = #{kind},
+			trigger_id = #{triggerId},
+			human = #{human},
+			content = #{content},
+			delivered_to = #{deliveredTo},
+			read_time = #{readTime},
+			event_time = #{eventTime},
+			update_time = NOW()
+		WHERE id = #{id}
+	</update>
+
+	<select id="load" parameterType="java.util.HashMap" resultMap="TodoInput">
+		SELECT <include refid="Base_Column_List" />
+		FROM xxl_ai_todo_input AS t
+		WHERE t.id = #{id}
+	</select>
+
+	<select id="listByTicket" parameterType="java.util.HashMap" resultMap="TodoInput">
+		SELECT <include refid="Base_Column_List" />
+		FROM xxl_ai_todo_input AS t
+		WHERE t.ticket_id = #{ticketId}
+		ORDER BY t.event_time ASC, t.id ASC
+	</select>
+
+	<select id="listByIds" parameterType="java.util.HashMap" resultMap="TodoInput">
+		SELECT <include refid="Base_Column_List" />
+		FROM xxl_ai_todo_input AS t
+		WHERE t.id IN
+		<foreach collection="ids" item="item" open="(" close=")" separator="," >
+			#{item}
+		</foreach>
+		ORDER BY t.event_time ASC, t.id ASC
+	</select>
+
+</mapper>

@@ -9,6 +9,7 @@ import com.xxl.ai.api.business.session.mapper.SessionMsgMapper;
 import com.xxl.ai.api.business.session.model.entity.SessionMsg;
 import com.xxl.ai.api.framework.model.entity.Config;
 import com.xxl.ai.api.framework.service.ConfigService;
+import com.xxl.ai.api.framework.util.CacheStore;
 import com.xxl.tool.concurrent.CyclicThread;
 import com.xxl.tool.core.CollectionTool;
 import com.xxl.tool.core.StringTool;
@@ -18,7 +19,6 @@ import jakarta.annotation.Resource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.SmartLifecycle;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -29,7 +29,7 @@ import java.util.concurrent.TimeUnit;
  *
  * 【归档流程】
  *  1、调度：{@link CyclicThread} 按固定心跳（{@value #TICK_MILLIS}ms）轮询；
- *  2、竞争：归档前以 Redis SETNX 抢锁（锁 TTL = 心跳间隔，仅作互斥），抢不到直接忽略；抢到则归档，处理完立即解锁；
+ *  2、竞争：归档前以 CacheStore#setIfAbsent 抢锁（默认 Redis SETNX，local profile 为进程内；锁 TTL = 心跳间隔，仅作互斥），抢不到直接忽略；抢到则归档，处理完立即解锁；
  *  3、检测：遍历开启记忆且已发布的 Agent，对其下每个访客，只判断「是否存在比水位线 last_msg_id 更新的消息」，
  *     有则取水位线之后的新消息归档，无则跳过；
  *  4、生成：取「新消息 + 历史记忆」经模型按固定维度生成最新记忆（定长），按唯一键 upsert 并推进水位线 last_msg_id。
@@ -55,7 +55,7 @@ public class MemoryArchiveTool implements SmartLifecycle {
     private static final int DEFAULT_MAX_LEN = 2000;
 
     @Resource
-    private StringRedisTemplate stringRedisTemplate;
+    private CacheStore cacheStore;
     @Resource
     private ConfigService configService;
     @Resource
@@ -110,7 +110,7 @@ public class MemoryArchiveTool implements SmartLifecycle {
     // ==================== 调度与竞争 ====================
 
     /**
-     * 心跳：以 Redis 锁竞争归档权，抢到才归档并处理完立即解锁，抢不到直接忽略
+     * 心跳：以缓存锁竞争归档权，抢到才归档并处理完立即解锁，抢不到直接忽略
      *
      * 锁仅作互斥（TTL = 心跳间隔，进程异常时到期自动释放），不承担归档节奏。
      */
@@ -120,8 +120,7 @@ public class MemoryArchiveTool implements SmartLifecycle {
         }
 
         // 抢锁：TTL 取心跳间隔，抢不到直接忽略
-        Boolean locked = stringRedisTemplate.opsForValue().setIfAbsent(LOCK_KEY, instanceId, TICK_MILLIS, TimeUnit.MILLISECONDS);
-        if (!Boolean.TRUE.equals(locked)) {
+        if (!cacheStore.setIfAbsent(LOCK_KEY, instanceId, TICK_MILLIS, TimeUnit.MILLISECONDS)) {
             return;
         }
         try {
@@ -130,7 +129,7 @@ public class MemoryArchiveTool implements SmartLifecycle {
             logger.error("长期记忆：归档执行异常, err={}", e.getMessage(), e);
         } finally {
             // 处理完立马解锁
-            stringRedisTemplate.delete(LOCK_KEY);
+            cacheStore.delete(LOCK_KEY);
         }
     }
 

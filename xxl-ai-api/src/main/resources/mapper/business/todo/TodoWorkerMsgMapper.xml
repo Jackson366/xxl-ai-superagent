@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+	"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.xxl.ai.api.business.todo.mapper.TodoWorkerMsgMapper">
+
+	<resultMap id="TodoWorkerMsg" type="com.xxl.ai.api.business.todo.model.entity.TodoWorkerMsg" >
+		<result column="id" property="id" />
+		<result column="ticket_id" property="ticketId" />
+		<result column="assignment_id" property="assignmentId" />
+		<result column="role" property="role" />
+		<result column="input_ids" property="inputIds" />
+		<result column="content" property="content" />
+		<result column="add_time" property="addTime" />
+		<result column="update_time" property="updateTime" />
+	</resultMap>
+
+	<sql id="Base_Column_List">
+		t.id,
+		t.ticket_id,
+		t.assignment_id,
+		t.role,
+		t.input_ids,
+		t.content,
+		t.add_time,
+		t.update_time
+	</sql>
+
+	<insert id="insert" parameterType="com.xxl.ai.api.business.todo.model.entity.TodoWorkerMsg" useGeneratedKeys="true" keyProperty="id" >
+		INSERT INTO xxl_ai_todo_worker_msg (
+			ticket_id, assignment_id, role, input_ids, content, add_time, update_time
+		) VALUES (
+			#{ticketId}, #{assignmentId}, #{role}, #{inputIds}, #{content}, NOW(), NOW()
+		)
+	</insert>
+
+	<select id="load" parameterType="java.util.HashMap" resultMap="TodoWorkerMsg">
+		SELECT <include refid="Base_Column_List" />
+		FROM xxl_ai_todo_worker_msg AS t
+		WHERE t.id = #{id}
+	</select>
+
+	<select id="listByTicket" parameterType="java.util.HashMap" resultMap="TodoWorkerMsg">
+		SELECT <include refid="Base_Column_List" />
+		FROM xxl_ai_todo_worker_msg AS t
+		WHERE t.ticket_id = #{ticketId}
+		ORDER BY t.id ASC
+	</select>
+
+</mapper>

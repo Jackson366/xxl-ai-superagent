@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS `xxl_ai_space` (
     `name`          VARCHAR(50)     NOT NULL                COMMENT '空间名称',
     `code`          VARCHAR(50)     NOT NULL                COMMENT '空间编码',
     `status`        TINYINT         NOT NULL DEFAULT 0      COMMENT '状态：0-正常、1-停用',
+    `superagent_status` TINYINT     NOT NULL DEFAULT 0      COMMENT '超级助理使用：0-否、1-是',
     `remark`        VARCHAR(255)    NULL DEFAULT NULL       COMMENT '备注',
     `add_time`      DATETIME        NOT NULL                COMMENT '新增时间',
     `update_time`   DATETIME        NOT NULL                COMMENT '更新时间',

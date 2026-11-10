@@ -13,6 +13,11 @@ import com.xxl.ai.api.business.space.model.entity.Space;
 import com.xxl.ai.api.business.space.model.entity.UserSpace;
 import com.xxl.ai.api.business.space.service.SpaceService;
 import com.xxl.ai.api.business.supplier.mapper.SupplierMapper;
+import com.xxl.ai.api.business.todo.constant.TodoConstant;
+import com.xxl.ai.api.business.todo.mapper.TodoSettingsMapper;
+import com.xxl.ai.api.business.todo.model.entity.TodoSettings;
+import com.xxl.ai.api.business.todo.model.json.TodoSettingsContent;
+import com.xxl.ai.api.business.todo.util.TodoJsonTool;
 import com.xxl.sso.core.helper.XxlSsoHelper;
 import com.xxl.sso.core.model.LoginInfo;
 import com.xxl.tool.core.CollectionTool;
@@ -49,6 +54,18 @@ public class SpaceServiceImpl implements SpaceService {
     private KnowledgeBaseMapper knowledgeBaseMapper;
     @Resource
     private AgentMapper agentMapper;
+    @Resource
+    private TodoSettingsMapper todoSettingsMapper;
+
+    /**
+     * 超级助理当前使用的空间ID，未配置返回 0（直接读配置表，避免与超级助理配置服务循环依赖）
+     */
+    private long superagentSpaceId() {
+        TodoSettings latest = todoSettingsMapper.loadLatest(TodoConstant.BLOCK_MODEL);
+        TodoSettingsContent.Model model = latest == null ? null
+                : TodoJsonTool.fromJson(latest.getContent(), TodoSettingsContent.Model.class);
+        return model == null ? 0 : model.spaceId;
+    }
 
     /**
      * 按ID查询单条空间
@@ -70,9 +87,9 @@ public class SpaceServiceImpl implements SpaceService {
      * 分页查询空间列表
      */
     @Override
-    public PageModel<SpaceDTO> pageList(int offset, int pagesize, String name, int status) {
-        List<Space> pageList = spaceMapper.pageList(offset, pagesize, name, status);
-        int totalCount = spaceMapper.pageListCount(offset, pagesize, name, status);
+    public PageModel<SpaceDTO> pageList(int offset, int pagesize, String name, int status, int superagentStatus) {
+        List<Space> pageList = spaceMapper.pageList(offset, pagesize, name, status, superagentStatus);
+        int totalCount = spaceMapper.pageListCount(offset, pagesize, name, status, superagentStatus);
         List<SpaceDTO> pageListDto = SpaceAdaptor.adapt2dto(pageList);
         PageModel<SpaceDTO> pageModel = new PageModel<>();
         pageModel.setData(pageListDto);
@@ -123,6 +140,10 @@ public class SpaceServiceImpl implements SpaceService {
         Space existSpace = spaceMapper.loadByCode(space.getCode());
         if (existSpace != null && existSpace.getId() != space.getId()) {
             return Response.ofFail("空间编码已存在");
+        }
+        // 正在被超级助理使用的空间不允许取消标记
+        if (space.getSuperagentStatus() != 1 && space.getId() == superagentSpaceId()) {
+            return Response.ofFail("该空间正被超级助理使用，请先在超级助理设置中切换空间");
         }
         int ret = spaceMapper.update(space);
         return ret > 0 ? Response.ofSuccess() : Response.ofFail();

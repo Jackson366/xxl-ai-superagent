@@ -209,7 +209,7 @@ function isAffix(tag: Record<string, any>) {
 function isFirstView() {
   try {
     const tag = selectedTag.value && selectedTag.value.fullPath ? selectedTag.value : selectedDropdownTag.value
-    return tag.fullPath === defaultSettings.homePath || tag.fullPath === visitedViews.value[1].fullPath
+    return tag.fullPath === (routesStore.homePath || defaultSettings.homePath) || tag.fullPath === visitedViews.value[1].fullPath
   } catch (err) {
     return false
   }

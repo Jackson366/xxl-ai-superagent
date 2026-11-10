@@ -9,13 +9,14 @@ import java.util.Date;
  */
 public class Space {
 
-    private long id;            /* 空间ID */
-    private String name;        /* 空间名称 */
-    private String code;        /* 空间编码 */
-    private int status;         /* 状态：0-正常、1-停用 */
-    private String remark;      /* 备注 */
-    private Date addTime;       /* 新增时间 */
-    private Date updateTime;    /* 更新时间 */
+    private long id;                /* 空间ID */
+    private String name;            /* 空间名称 */
+    private String code;            /* 空间编码 */
+    private int status;             /* 状态：0-正常、1-停用 */
+    private int superagentStatus;   /* 超级助理使用：0-否、1-是 */
+    private String remark;          /* 备注 */
+    private Date addTime;           /* 新增时间 */
+    private Date updateTime;        /* 更新时间 */
 
     public long getId() {
         return id;
@@ -47,6 +48,14 @@ public class Space {
 
     public void setStatus(int status) {
         this.status = status;
+    }
+
+    public int getSuperagentStatus() {
+        return superagentStatus;
+    }
+
+    public void setSuperagentStatus(int superagentStatus) {
+        this.superagentStatus = superagentStatus;
     }
 
     public String getRemark() {

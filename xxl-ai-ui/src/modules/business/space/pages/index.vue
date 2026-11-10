@@ -23,6 +23,13 @@
             <el-option :label="t('common.disabled')" :value="1" />
           </el-select>
         </el-form-item>
+        <el-form-item :label="t('business.space.superagent')" prop="superagentStatus">
+          <el-select v-model="queryParams.superagentStatus" :placeholder="t('common.selectPlaceholder')" clearable style="width: 140px">
+            <el-option :label="t('common.all')" :value="-1" />
+            <el-option :label="t('business.space.superagentYes')" :value="1" />
+            <el-option :label="t('business.space.superagentNo')" :value="0" />
+          </el-select>
+        </el-form-item>
         <el-form-item>
           <el-button type="primary" icon="Search" @click="handleQuery">{{ t('common.search') }}</el-button>
           <el-button icon="Refresh" @click="resetQuery">{{ t('common.reset') }}</el-button>
@@ -60,6 +67,12 @@
             </el-tag>
           </template>
         </el-table-column>
+        <el-table-column :label="t('business.space.superagent')" align="center" width="130">
+          <template #default="scope">
+            <el-tag v-if="scope.row.superagentStatus === 1" type="primary">{{ t('business.space.superagentYes') }}</el-tag>
+            <span v-else>{{ t('business.space.superagentNo') }}</span>
+          </template>
+        </el-table-column>
         <el-table-column :label="t('common.remark')" align="center" prop="remark" :show-overflow-tooltip="true" />
         <el-table-column :label="t('common.createTime')" align="center" width="170">
           <template #default="scope">
@@ -90,7 +103,7 @@
 
     <!-- 添加或修改空间对话框 -->
     <el-dialog :title="formState.title" v-model="formState.visible" width="520px" append-to-body>
-      <el-form ref="formRef" :model="formState.form" :rules="formState.rules" label-width="90px">
+      <el-form ref="formRef" :model="formState.form" :rules="formState.rules" label-width="120px">
         <el-form-item :label="t('business.space.name')" prop="name">
           <el-input v-model="formState.form.name" :placeholder="t('common.inputPlaceholder', [t('business.space.name')])" maxlength="50" />
         </el-form-item>
@@ -107,6 +120,9 @@
             <el-radio :value="0">{{ t('common.normal') }}</el-radio>
             <el-radio :value="1">{{ t('common.disabled') }}</el-radio>
           </el-radio-group>
+        </el-form-item>
+        <el-form-item :label="t('business.space.superagent')">
+          <el-switch v-model="formState.form.superagentStatus" :active-value="1" :inactive-value="0" />
         </el-form-item>
         <el-form-item :label="t('common.remark')" prop="remark">
           <el-input v-model="formState.form.remark" :placeholder="t('common.inputPlaceholder', [t('common.remark')])" maxlength="255" />
@@ -140,7 +156,7 @@ const resetForm = useFormReset()
 // --------------------------------- ref data ---------------------------------
 const formRef = ref<FormInstance>() /* 编辑表单 ref */
 
-const queryParams = ref<SpaceQuery>({ pageNum: 1, pageSize: 10, name: undefined, status: -1 })
+const queryParams = ref<SpaceQuery>({ pageNum: 1, pageSize: 10, name: undefined, status: -1, superagentStatus: -1 })
 
 const table = ref<TableState<Space>>({ list: [], total: 0, loading: true, showSearch: true, ids: [], single: true, multiple: true })
 
@@ -168,7 +184,7 @@ function getList() {
   })
 }
 function reset() {
-  formState.value.form = { id: undefined, name: undefined, code: undefined, status: 0, remark: undefined }
+  formState.value.form = { id: undefined, name: undefined, code: undefined, status: 0, superagentStatus: 0, remark: undefined }
   resetForm('formRef')
 }
 function handleQuery() {

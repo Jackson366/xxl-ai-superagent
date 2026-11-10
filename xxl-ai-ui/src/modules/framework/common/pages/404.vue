@@ -22,7 +22,7 @@
         <div class="bullshit__info">
           {{ t('error.notFoundInfo') }}
         </div>
-        <router-link :to="defaultSettings.homePath" class="bullshit__return-home"> {{ t('error.returnHome') }} </router-link>
+        <router-link to="/" class="bullshit__return-home"> {{ t('error.returnHome') }} </router-link>
       </div>
     </div>
   </div>
@@ -30,7 +30,6 @@
 
 <script setup lang="ts">
 // 引入
-import defaultSettings from '@/default-settings'
 import { computed } from 'vue'
 import { t } from '@/i18n'
 

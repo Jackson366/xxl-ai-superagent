@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+	"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.xxl.ai.api.business.todo.mapper.TodoThreadMapper">
+
+	<resultMap id="TodoThread" type="com.xxl.ai.api.business.todo.model.entity.TodoThread" >
+		<result column="id" property="id" />
+		<result column="user_id" property="userId" />
+		<result column="title" property="title" />
+		<result column="pending" property="pending" />
+		<result column="evaluating" property="evaluating" />
+		<result column="expired" property="expired" />
+		<result column="subscriptions" property="subscriptions" />
+		<result column="last_time" property="lastTime" />
+		<result column="add_time" property="addTime" />
+		<result column="update_time" property="updateTime" />
+	</resultMap>
+
+	<sql id="Base_Column_List">
+		t.id,
+		t.user_id,
+		t.title,
+		t.pending,
+		t.evaluating,
+		t.expired,
+		t.subscriptions,
+		t.last_time,
+		t.add_time,
+		t.update_time
+	</sql>
+
+	<insert id="insert" parameterType="com.xxl.ai.api.business.todo.model.entity.TodoThread" useGeneratedKeys="true" keyProperty="id" >
+		INSERT INTO xxl_ai_todo_thread (
+			user_id, title, pending, evaluating, expired, subscriptions, last_time, add_time, update_time
+		) VALUES (
+			#{userId}, #{title}, #{pending}, #{evaluating}, #{expired}, #{subscriptions}, #{lastTime}, NOW(), NOW()
+		)
+	</insert>
+
+	<update id="update" parameterType="com.xxl.ai.api.business.todo.model.entity.TodoThread" >
+		UPDATE xxl_ai_todo_thread
+		SET user_id = #{userId},
+			title = #{title},
+			pending = #{pending},
+			evaluating = #{evaluating},
+			expired = #{expired},
+			subscriptions = #{subscriptions},
+			last_time = #{lastTime},
+			update_time = NOW()
+		WHERE id = #{id}
+	</update>
+
+	<select id="load" parameterType="java.util.HashMap" resultMap="TodoThread">
+		SELECT <include refid="Base_Column_List" />
+		FROM xxl_ai_todo_thread AS t
+		WHERE t.id = #{id}
+	</select>
+
+	<select id="loadForUpdate" parameterType="java.util.HashMap" resultMap="TodoThread">
+		SELECT <include refid="Base_Column_List" />
+		FROM xxl_ai_todo_thread AS t
+		WHERE t.id = #{id}
+		FOR UPDATE
+	</select>
+
+	<select id="listActive" resultMap="TodoThread">
+		SELECT <include refid="Base_Column_List" />
+		FROM xxl_ai_todo_thread AS t
+		WHERE t.pending IS NOT NULL OR t.evaluating IS NOT NULL
+		ORDER BY t.id ASC
+	</select>
+
+	<select id="pageList" parameterType="java.util.HashMap" resultMap="TodoThread">
+		SELECT <include refid="Base_Column_List" />
+		FROM xxl_ai_todo_thread AS t
+		WHERE t.user_id = #{userId}
+		ORDER BY t.last_time DESC, t.id DESC
+		LIMIT #{offset}, #{pagesize}
+	</select>
+
+	<select id="pageListCount" parameterType="java.util.HashMap" resultType="int">
+		SELECT count(1)
+		FROM xxl_ai_todo_thread AS t
+		WHERE t.user_id = #{userId}
+	</select>
+
+</mapper>

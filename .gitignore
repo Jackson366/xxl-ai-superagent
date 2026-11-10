@@ -9,6 +9,8 @@
 
 # for backend-resource
 xxl-ai-api/src/main/resources/static/*
+# for backend local profile (H2 data)
+xxl-ai-api/data/
 
 # for fontend
 node_modules/

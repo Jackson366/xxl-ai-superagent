@@ -289,6 +289,9 @@
       "space": "Workspace",
       "selectPlaceholder": "Select Workspace",
       "noSpaceTip": "No Space Assigned",
+      "superagent": "For Superagent",
+      "superagentYes": "Yes",
+      "superagentNo": "No",
       "confirmDelete": "Are you sure to delete the space with ID \"{0}\"?"
     },
     "supplier": {
@@ -492,6 +495,149 @@
       "editTitle": "Edit Memory",
       "emptyContent": "No memory content",
       "confirmDelete": "Are you sure to delete the memory with ID \"{0}\"?"
+    },
+    "todo": {
+      "inbox": "Inbox",
+      "unreadOnly": "Unread only",
+      "markAllRead": "Mark all read",
+      "inboxEmpty": "No messages",
+      "tickets": "Tickets",
+      "noTicket": "No ticket yet",
+      "timeline": "History",
+      "retry": "Retry",
+      "stop": "Stop",
+      "scope": "Scope",
+      "question": "Awaiting your answer",
+      "requeue": "Evaluate again",
+      "dismiss": "Dismiss",
+      "handback": "Handed back",
+      "decisionTitle": "Eval",
+      "assignment": "Assignment #{0}",
+      "goSettings": "Open settings",
+      "settings": "Settings",
+      "pausedTip": "Processing paused: no new evaluation or execution",
+      "placeholder": "Describe what the superagent should handle. Ctrl + Enter to submit",
+      "submit": "Submit",
+      "submitted": "Submitted",
+      "slots": "Working {0}/{1}",
+      "needMe": "Needs me ({0})",
+      "needMeEmpty": "Nothing needs you",
+      "all": "All todos ({0})",
+      "title": "Todo",
+      "stageLabel": "Stage",
+      "waiting": "Waiting on whom, for what",
+      "lastTime": "Last submitted",
+      "appendPlaceholder": "Add details. Ctrl + Enter to send",
+      "answerPlaceholder": "Answer the question above. Ctrl + Enter to send",
+      "append": "Add",
+      "answer": "Answer",
+      "stopConfirm": "Stop ticket \"{0}\"? A stopped ticket is not resumed.",
+      "stopped": "Stopped",
+      "requeueConfirm": "Send this submission to Eval again?",
+      "stage": {
+        "delivery": "Input undelivered",
+        "answer": "Awaiting answer",
+        "blocked": "Blocked",
+        "failed": "Failed",
+        "queued": "Queued",
+        "idle": "Waiting for a message",
+        "working": "Working",
+        "ended": "Ended",
+        "evaluating": "Evaluating",
+        "unavailable": "Eval unfinished",
+        "ignored": "Not accepted"
+      },
+      "reason": {
+        "said": "Model note",
+        "senderInactive": "The sender account is disabled",
+        "senderNotAdmin": "The sender is not an admin",
+        "modelNotConfigured": "Superagent models are not configured",
+        "spaceDisabled": "The superagent space is disabled or deleted",
+        "spaceNotMarked": "The selected space is not marked for the superagent",
+        "modelUnavailable": "A superagent model is unavailable",
+        "policyChanged": "Policy changed during Eval; evaluated again under the new policy",
+        "timeout": "Eval timed out",
+        "assessmentFailed": "Eval call failed",
+        "startedTicket": "This submission already started a ticket",
+        "observed": "Observe mode: would accept, not executed"
+      },
+      "decision": {
+        "accept": "Accept",
+        "stop": "Stop",
+        "ignore": "Ignore",
+        "unavailable": "Unfinished"
+      },
+      "strength": {
+        "explicit": "Explicit request",
+        "inferred": "Inferred request"
+      },
+      "report": {
+        "progress": "Progress",
+        "waiting": "Waiting",
+        "ready": "Ready",
+        "blocked": "Blocked",
+        "failed": "Failed",
+        "dropped": "Nothing to do"
+      },
+      "assignmentState": {
+        "pending": "Pending",
+        "running": "Running",
+        "ended": "Ended"
+      },
+      "endedReason": {
+        "hostRestarted": "Service restarted",
+        "retried": "Retried by a person",
+        "stopped": "Stopped by a person",
+        "reported": "Result reported"
+      },
+      "outcome": {
+        "completed": "Completed",
+        "dropped": "Nothing to do",
+        "stopped": "Stopped"
+      },
+      "purpose": {
+        "acknowledgement": "Acknowledged",
+        "answer": "Answer",
+        "attention": "Needs your answer",
+        "result": "Result",
+        "notice": "Notice"
+      },
+      "triggerKind": {
+        "create": "New",
+        "append": "Added",
+        "answer": "Answer"
+      },
+      "set": {
+        "title": "Superagent settings",
+        "modelBlock": "Models",
+        "workerBlock": "Execution",
+        "policyBlock": "Accepting",
+        "promptsBlock": "Prompts",
+        "history": "History",
+        "version": "Version {0}",
+        "versionLabel": "Version",
+        "neverSaved": "Not saved (defaults)",
+        "space": "Superagent space",
+        "spaceTip": "Only spaces marked for the superagent are listed; models, MCP and Skills all come from this space",
+        "routerModel": "Router model",
+        "workerModel": "Worker model",
+        "saveModelFirst": "Save the model settings before choosing tools",
+        "mcp": "MCP tools",
+        "skill": "Skills",
+        "toolTip": "All todos share these tools; changes apply to assignments started afterwards",
+        "maxWorkers": "Concurrent workers",
+        "paused": "Pause processing",
+        "pausedTip": "While paused, no new Eval or execution starts; submitted todos are kept",
+        "mode": "Inferred requests",
+        "modeOff": "Off",
+        "modeObserve": "Observe",
+        "modeAuto": "Auto accept",
+        "modeTip": "Submissions from the web form are explicit requests and are not affected; this only controls inferred requests",
+        "routerPrompt": "Router instructions",
+        "workerPrompt": "Worker instructions",
+        "useDefault": "Use default",
+        "promptTip": "The output format, the scope and the rule that external text is data are appended by the system and cannot be changed here"
+      }
     }
   }
 }
