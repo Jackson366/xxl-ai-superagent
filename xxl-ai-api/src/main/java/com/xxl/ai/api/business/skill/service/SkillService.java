@@ -4,6 +4,7 @@ import com.xxl.ai.api.business.skill.model.dto.SkillDTO;
 import com.xxl.ai.api.business.skill.model.entity.Skill;
 import com.xxl.tool.response.PageModel;
 import com.xxl.tool.response.Response;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
@@ -23,6 +24,11 @@ public interface SkillService {
      * 新增 SKILL（自动播种固定文件：SKILL.md + scripts/ + reference/）
      */
     Response<String> insert(long spaceId, SkillDTO dto);
+
+    /**
+     * 将上传的技能及其文件树写入当前空间
+     */
+    Response<List<SkillDTO>> upload(long spaceId, MultipartFile file);
 
     /**
      * 批量删除 SKILL（级联删除内容文件树）

@@ -14,8 +14,16 @@ import com.xxl.tool.response.Response;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * SKILL Service 实现
@@ -26,7 +34,7 @@ import java.util.List;
 public class SkillServiceImpl implements SkillService {
 
     /** 根级固定文件：SKILL.md 文件名 */
-    private static final String FILE_NAME_MAIN = "SKILL.md";
+    private static final String FILE_NAME_MAIN = SkillUploadParser.MANIFEST;
     /** 根级固定目录：scripts、reference（社区约定骨架） */
     private static final String DIR_NAME_SCRIPTS = "scripts";
     private static final String DIR_NAME_REFERENCE = "reference";
@@ -77,6 +85,52 @@ public class SkillServiceImpl implements SkillService {
         // 播种固定文件：SKILL.md + scripts/ + reference/
         insertSeedFiles(skill.getId(), skill);
         return Response.ofSuccess();
+    }
+
+    /**
+     * 批量导入技能。全部校验完成后再写入，文件树写入失败时整包回滚。
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Response<List<SkillDTO>> upload(long spaceId, MultipartFile file) {
+        List<SkillUploadParser.ParsedSkill> skills;
+        try {
+            skills = SkillUploadParser.read(file);
+        } catch (IllegalArgumentException ex) {
+            return Response.ofFail(ex.getMessage());
+        } catch (IOException ex) {
+            return Response.ofFail("无法读取技能文件，请检查文件编码或 ZIP 是否完整");
+        }
+
+        Set<String> names = new HashSet<>();
+        for (SkillUploadParser.ParsedSkill skill : skills) {
+            String name = skill.name();
+            if (!isValidName(name)) {
+                return Response.ofFail("SKILL名称仅支持字母/数字/中划线，长度不超过 100：" + name);
+            }
+            if (!names.add(name.toLowerCase(Locale.ROOT))) {
+                return Response.ofFail("技能包中存在同名 SKILL[" + name + "]");
+            }
+            if (skillMapper.countByName(spaceId, name, 0) > 0) {
+                return Response.ofFail("SKILL名称[" + name + "]在当前空间已存在");
+            }
+        }
+
+        List<SkillDTO> imported = new ArrayList<>();
+        for (SkillUploadParser.ParsedSkill parsed : skills) {
+            SkillDTO dto = new SkillDTO();
+            dto.setSpaceId(spaceId);
+            dto.setName(parsed.name());
+            dto.setDescription(parsed.description());
+            dto.setVersion(parsed.version());
+            dto.setStatus(0);
+            Skill skill = SkillAdaptor.adapt(dto);
+            skillMapper.insert(skill);
+            insertUploadedFiles(skill.getId(), parsed.files());
+            dto.setId(skill.getId());
+            imported.add(dto);
+        }
+        return Response.ofSuccess(imported);
     }
 
     /**
@@ -152,6 +206,46 @@ public class SkillServiceImpl implements SkillService {
             }
         }
         return true;
+    }
+
+    /**
+     * 按父节点优先的顺序写入上传文件树，沿用现有的固定节点规则。
+     */
+    private void insertUploadedFiles(long skillId, Map<String, String> files) {
+        Map<String, Long> directoryIds = new HashMap<>();
+        directoryIds.put("", 0L);
+        int sort = 4;
+        for (Map.Entry<String, String> entry : files.entrySet()) {
+            String path = entry.getKey();
+            int separator = path.lastIndexOf('/');
+            String name = path.substring(separator + 1);
+            String parent = separator < 0 ? "" : path.substring(0, separator);
+            String content = entry.getValue();
+            boolean directory = content == null;
+            int fixedSort = switch (path) {
+                case FILE_NAME_MAIN -> 1;
+                case DIR_NAME_SCRIPTS -> 2;
+                case DIR_NAME_REFERENCE -> 3;
+                default -> 0;
+            };
+
+            SkillFile node = new SkillFile();
+            node.setSkillId(skillId);
+            node.setParentId(directoryIds.get(parent));
+            node.setName(name);
+            node.setType(directory ? 0 : 1);
+            node.setContent(content);
+            node.setLocked(fixedSort == 0 ? 0 : 1);
+            node.setSort(fixedSort == 0 ? sort++ : fixedSort);
+            if (!directory) {
+                String type = SkillFileServiceImpl.parseFileType(name);
+                node.setFileType(type.length() > 20 ? "txt" : type);
+            }
+            skillFileMapper.insert(node);
+            if (directory) {
+                directoryIds.put(path, node.getId());
+            }
+        }
     }
 
     /**

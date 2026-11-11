@@ -15,6 +15,13 @@ export function addSkill(data: Skill): Promise<Response<string>> {
   return request({ url: '/skill/insert', method: 'post', data: data })
 }
 
+/** 上传 Markdown 或 ZIP 技能包 */
+export function uploadSkill(file: File): Promise<Response<Skill[]>> {
+  const data = new FormData()
+  data.append('file', file)
+  return request({ url: '/skill/upload', method: 'post', data, timeout: 60000 })
+}
+
 /** 批量删除 SKILL */
 export function delSkill(ids: number | number[]): Promise<Response<string>> {
   return request({ url: '/skill/delete', method: 'post', data: Array.isArray(ids) ? ids : [ids] })
