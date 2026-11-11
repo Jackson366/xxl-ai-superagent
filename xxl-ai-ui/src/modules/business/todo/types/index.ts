@@ -262,3 +262,18 @@ export interface TodoWorker {
   lastStatus?: string
   lastSummary?: string
 }
+
+/** 超级助理的单条消息及其后续结果 */
+export interface TodoAssistantTurn {
+  id: number
+  content: string
+  reply?: string
+  state: 'pending' | 'answered' | 'proposed' | 'submitted' | 'failed' | 'replaced'
+  referenceId?: number
+  referenceTitle?: string
+  targetTicketId?: number
+  attentionId?: string
+  proposal?: string
+  errorCode?: string
+  threadId?: number
+}

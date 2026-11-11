@@ -23,6 +23,12 @@ public interface TodoEngineService extends WorkerReportHandler {
      */
     Response<Long> submit(int userId, TodoSubmitDTO dto);
 
+    /* 助理入口确认后，可指定归属的唯一续办工单 */
+    Response<Long> submitFromAssistant(int userId, TodoSubmitDTO dto, Long targetTicketId);
+
+    /* 人工明确重启已经停止的工单 */
+    Response<String> restart(int userId, long ticketId);
+
     /**
      * 按 requestId 查询已提交的待办ID（并发重复提交时回读），不属于该用户时返回 null
      */

@@ -4,6 +4,7 @@
 import { request } from '@/utils/request'
 import type { Response, PageModel } from '@/types'
 import type {
+  TodoAssistantTurn,
   TodoListQuery,
   TodoMessage,
   TodoMessageListQuery,
@@ -98,4 +99,25 @@ export async function openTodoEvents(threadId: number, afterId: number, signal: 
     throw new Error(`HTTP ${response.status}`)
   }
   return response.body.getReader()
+}
+
+/** 助理消息页：会话上下文由后端管理 */
+export function listAssistantTurns(beforeId?: number): Promise<Response<TodoAssistantTurn[]>> {
+  return request({ url: '/todo/assistant/turns', method: 'get', params: { beforeId } })
+}
+
+export function sendAssistantTurn(data: { requestId: string; content: string; referenceId?: number; revisesId?: number }): Promise<Response<TodoAssistantTurn>> {
+  return request({ url: '/todo/assistant/send', method: 'post', data })
+}
+
+export function confirmAssistantTurn(id: number): Promise<Response<number>> {
+  return request({ url: '/todo/assistant/confirm', method: 'post', data: { id } })
+}
+
+export function retryAssistantTurn(id: number): Promise<Response<TodoAssistantTurn>> {
+  return request({ url: '/todo/assistant/retry', method: 'post', data: { id } })
+}
+
+export function restartAssistantTicket(id: number): Promise<Response<string>> {
+  return request({ url: '/todo/assistant/restart', method: 'post', data: { id } })
 }

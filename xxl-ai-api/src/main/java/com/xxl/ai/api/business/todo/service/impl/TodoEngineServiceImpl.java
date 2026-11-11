@@ -117,6 +117,16 @@ public class TodoEngineServiceImpl implements TodoEngineService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Response<Long> submit(int userId, TodoSubmitDTO dto) {
+        return submit(userId, dto, null, false);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Response<Long> submitFromAssistant(int userId, TodoSubmitDTO dto, Long targetTicketId) {
+        return submit(userId, dto, targetTicketId, true);
+    }
+
+    private Response<Long> submit(int userId, TodoSubmitDTO dto, Long targetTicketId, boolean assistantConfirmed) {
         if (dto == null || StringTool.isBlank(dto.getRequestId()) || dto.getRequestId().length() > 64) {
             return Response.ofFail("请求标识不合法");
         }
@@ -140,6 +150,9 @@ public class TodoEngineServiceImpl implements TodoEngineService {
         Date now = new Date();
         String kind = dto.getKind();
         TodoThread thread;
+        if (targetTicketId != null && TodoConstant.TRIGGER_CREATE.equals(kind)) {
+            return Response.ofFail("新建待办不能指定原工单");
+        }
         if (TodoConstant.TRIGGER_CREATE.equals(kind)) {
             thread = new TodoThread();
             thread.setUserId(userId);
@@ -164,6 +177,17 @@ public class TodoEngineServiceImpl implements TodoEngineService {
             }
         }
 
+        if (targetTicketId != null) {
+            TodoTicket target = ticketMapper.loadForUpdate(targetTicketId);
+            if (target == null || target.getThreadId() != thread.getId() || target.getUserId() != userId
+                    || !TodoJsonTool.longList(thread.getSubscriptions()).contains(targetTicketId)
+                    || TodoConstant.ENDED_BY_HUMAN.equals(target.getEndedBy())
+                    || (target.getEndedTime() != null && !revalidate(target))
+                    || (answeredTicketId != null && !targetTicketId.equals(answeredTicketId))) {
+                return Response.ofFail("原工单或提问状态已变化，请重新提交");
+            }
+        }
+
         TodoTrigger trigger = new TodoTrigger();
         trigger.setTriggerKey(dto.getRequestId());
         trigger.setThreadId(thread.getId());
@@ -179,7 +203,7 @@ public class TodoEngineServiceImpl implements TodoEngineService {
                 new SuperagentTraceEvent("trigger.received", "success", kind,
                         TodoJsonTool.toJson(Map.of("triggerId", trigger.getId(), "content", content)), null, null));
         thread.setLastTime(now);
-        route(thread, trigger, answeredTicketId);
+        route(thread, trigger, answeredTicketId, targetTicketId, assistantConfirmed);
         threadMapper.update(thread);
         wake(null);
         return Response.ofSuccess(thread.getId());
@@ -194,9 +218,14 @@ public class TodoEngineServiceImpl implements TodoEngineService {
     /**
      * 路由一条触发：送达订阅本线程的工单（已结束的先重新校验授权再恢复）；没有工单接手时进入研判队列
      */
-    private void route(TodoThread thread, TodoTrigger trigger, Long answeredTicketId) {
+    private void route(TodoThread thread, TodoTrigger trigger, Long answeredTicketId, Long targetTicketId, boolean assistantConfirmed) {
         TodoDisposition disposition = new TodoDisposition();
+        disposition.assistantConfirmed = assistantConfirmed;
+        disposition.targetTicketId = targetTicketId;
         for (Long ticketId : TodoJsonTool.longList(thread.getSubscriptions())) {
+            if (targetTicketId != null && !targetTicketId.equals(ticketId)) {
+                continue;
+            }
             TodoTicket ticket = ticketMapper.loadForUpdate(ticketId);
             // 人工停止的工单不再接收任何消息
             if (ticket == null || TodoConstant.ENDED_BY_HUMAN.equals(ticket.getEndedBy())) {
@@ -205,7 +234,7 @@ public class TodoEngineServiceImpl implements TodoEngineService {
             boolean resumed = false;
             if (ticket.getEndedTime() != null) {
                 // 授权不再成立时不恢复，消息按未送达处理，进入研判
-                if (!revalidate(ticket)) {
+                if (targetTicketId == null && !revalidate(ticket)) {
                     continue;
                 }
                 reopen(ticket, trigger.getId());
@@ -322,7 +351,10 @@ public class TodoEngineServiceImpl implements TodoEngineService {
         TodoEvaluating evaluating = new TodoEvaluating();
         evaluating.id = newEvalId(threadId);
         evaluating.triggerIds = ids(admitted);
-        evaluating.primary = admitted.get(admitted.size() - 1).getId();
+        // 助理入口明确确认过的首条内容是该工单授权，后续提交不能覆盖它
+        evaluating.primary = admitted.stream()
+                .filter(trigger -> TodoConstant.TRIGGER_CREATE.equals(trigger.getKind()) && disposition(trigger).assistantConfirmed)
+                .findFirst().orElse(admitted.get(admitted.size() - 1)).getId();
         evaluating.strength = TodoConstant.STRENGTH_EXPLICIT;
         evaluating.policyVersion = settingsService.policyVersion();
         evaluating.startedAt = now;
@@ -411,8 +443,12 @@ public class TodoEngineServiceImpl implements TodoEngineService {
         mandate.policyVersion = evaluating.policyVersion;
         mandate.basis = TodoConstant.BASIS_ADDRESSED;
         mandate.actorUserId = primary.getUserId();
-        mandate.scope = StringTool.isNotBlank(scope) ? TodoJsonTool.abbreviate(scope, 1000)
-                : TodoJsonTool.abbreviate(primary.getContent(), 1000);
+        if (disposition(primary).assistantConfirmed) {
+            mandate.scope = primary.getContent();
+        } else {
+            mandate.scope = StringTool.isNotBlank(scope) ? TodoJsonTool.abbreviate(scope, 1000)
+                    : TodoJsonTool.abbreviate(primary.getContent(), 1000);
+        }
         TodoDecision decision = record(thread, evalId, evaluating.triggerIds, TodoConstant.DECISION_ACCEPT,
                 evaluating.strength, reason(TodoConstant.REASON_SAID, reasonText), mandate, audit);
 
@@ -574,6 +610,10 @@ public class TodoEngineServiceImpl implements TodoEngineService {
         observation.append(ticket.getThreadId(), null, ticket.getId(), round.assignmentId(), round.roundId(),
                 new SuperagentTraceEvent("round.ended", roundStatus, null, error,
                         null, Math.max(0, now.getTime() - round.startedAt().getTime())));
+        // 已取消轮次的迟到内容不能进入同一工单后续派工的模型上下文
+        if ("cancelled".equals(roundStatus)) {
+            return;
+        }
         if (StringTool.isNotBlank(reply)) {
             saveWorkerMsg(ticket.getId(), round.assignmentId(), "assistant", reply, null);
         }
@@ -793,7 +833,7 @@ public class TodoEngineServiceImpl implements TodoEngineService {
         triggerMapper.updateDisposition(triggerId, TodoJsonTool.toJson(disposition));
 
         // 没有其他工单接手时进入研判
-        boolean queued = !ownedByLive(disposition);
+        boolean queued = disposition.targetTicketId == null && !ownedByLive(disposition);
         if (queued) {
             TodoThread thread = locked.thread();
             List<Long> pending = TodoJsonTool.longList(thread.getPending());
@@ -829,6 +869,25 @@ public class TodoEngineServiceImpl implements TodoEngineService {
         }
         // 提交后中断正在执行的一轮
         wake(ticketId);
+        return Response.ofSuccess();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Response<String> restart(int userId, long ticketId) {
+        LockedTicket locked = lockTicket(ticketId);
+        if (locked == null || locked.ticket().getUserId() != userId) {
+            return Response.ofFail("工单不存在");
+        }
+        TodoTicket ticket = locked.ticket();
+        if (!TodoConstant.OUTCOME_STOPPED.equals(ticket.getEndedOutcome()) || !revalidate(ticket)) {
+            return Response.ofFail("当前工单不可重新开始");
+        }
+        addInput(ticket, TodoConstant.INPUT_TEXT, null, true,
+                "用户要求按原范围重新开始。先核实上次已经执行的操作，避免重复产生外部副作用。");
+        reopen(ticket, null);
+        ticketMapper.update(ticket);
+        wake(null);
         return Response.ofSuccess();
     }
 
@@ -909,6 +968,10 @@ public class TodoEngineServiceImpl implements TodoEngineService {
             return Response.ofFail("提交不存在");
         }
         TodoThread thread = threadMapper.loadForUpdate(trigger.getThreadId());
+        TodoTrigger lockedTrigger = triggerMapper.load(triggerId);
+        if (disposition(lockedTrigger).targetTicketId != null) {
+            return Response.ofFail("指定工单的提交不能重新分派");
+        }
         TodoEvaluating evaluating = TodoJsonTool.fromJson(thread.getEvaluating(), TodoEvaluating.class);
         List<Long> pending = TodoJsonTool.longList(thread.getPending());
         if ((evaluating != null && evaluating.triggerIds.contains(triggerId)) || pending.contains(triggerId)) {
@@ -1057,7 +1120,7 @@ public class TodoEngineServiceImpl implements TodoEngineService {
             // 结束的工单不再算接手方
             disposition.fanout.remove(ticket.getId());
             triggerMapper.updateDisposition(trigger.getId(), TodoJsonTool.toJson(disposition));
-            if (!ownedByLive(disposition) && !pending.contains(trigger.getId())) {
+            if (disposition.targetTicketId == null && !ownedByLive(disposition) && !pending.contains(trigger.getId())) {
                 pending.add(trigger.getId());
             }
         }
@@ -1067,7 +1130,7 @@ public class TodoEngineServiceImpl implements TodoEngineService {
     /**
      * 恢复已结束的工单：沿用原授权，新建派工
      */
-    private void reopen(TodoTicket ticket, long triggerId) {
+    private void reopen(TodoTicket ticket, Long triggerId) {
         ticket.setEndedTime(null);
         ticket.setEndedBy(null);
         ticket.setEndedOutcome(null);

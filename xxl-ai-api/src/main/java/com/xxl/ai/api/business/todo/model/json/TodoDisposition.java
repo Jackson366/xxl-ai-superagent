@@ -11,6 +11,8 @@ import java.util.List;
 public class TodoDisposition {
 
     public String evalId;                                  /* 进入的EvalID */
+    public boolean assistantConfirmed;                     /* 已在助理入口确认执行范围 */
+    public Long targetTicketId;                            /* 仅投递给指定工单 */
     public Long decisionId;                                /* 产生的决定ID */
     public List<Long> fanout = new ArrayList<>();          /* 送达的工单ID */
     public List<TodoHandback> handbacks = new ArrayList<>(); /* 被退回的工单与原因 */

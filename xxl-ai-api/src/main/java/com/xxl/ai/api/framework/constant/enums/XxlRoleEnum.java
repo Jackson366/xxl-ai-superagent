@@ -82,7 +82,8 @@ public enum XxlRoleEnum {
 
         // 超级助理（仅管理员；菜单顺序即注册顺序，排第一作为管理员登录落地页）
         if (role == ADMIN) {
-            resources.add(res(10, 0, "超级助理", ResourceTypeEnum.MENU, "todo:default", "/todo", "guide", 50));
+            resources.add(res(10, 0, "超级助理", ResourceTypeEnum.MENU, "todo:default", "/todo/assistant", "guide", 50));
+            resources.add(resHidden(102, 0, "超级助理待办", ResourceTypeEnum.MENU, "todo:default", "/todo", "", 52));
             resources.add(resHidden(101, 0, "超级助理设置", ResourceTypeEnum.MENU, "todo:default", "/todo/settings", "", 51));
         }
 

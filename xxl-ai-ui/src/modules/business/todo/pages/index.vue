@@ -5,6 +5,10 @@
 <template>
   <div class="app-container">
     <div class="content-inner">
+      <div class="todo-entry">
+        <el-button @click="router.push('/todo/assistant')">{{ t('business.todo.assistant.tab') }}</el-button>
+        <el-button type="primary" plain aria-current="page">{{ t('business.todo.title') }}</el-button>
+      </div>
       <!-- 健康：只在需要人行动时出现 -->
       <el-alert v-if="overview.readyCode" type="warning" :closable="false" show-icon class="mb8">
         <template #title>
@@ -102,6 +106,7 @@
           @keydown.ctrl.enter="handleReply"
         />
         <div class="todo-bar">
+          <el-button v-if="detail" @click="continueInAssistant(detail.thread.id)">{{ t('business.todo.assistant.continue') }}</el-button>
           <span class="todo-spacer" />
           <el-button type="primary" :loading="replier.loading.value" :disabled="!reply.trim()" @click="handleReply">
             {{ answering ? t('business.todo.answer') : t('business.todo.append') }}
@@ -118,8 +123,8 @@
 <script setup lang="ts">
 defineOptions({ name: 'BusinessTodo' })
 import { t } from '@/i18n'
-import { computed, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import modal from '@/utils/modal'
 import { Pagination } from '@/components'
 import { usePageParams } from '@/composables/usePageParams'
@@ -137,6 +142,7 @@ import type { TodoOverview, TodoQuery, TodoThread, TodoThreadDetail, TodoTicket 
 const POLL_MS = 5000
 
 const router = useRouter()
+const route = useRoute()
 const creator = useSubmit() /* 新建待办 */
 const replier = useSubmit() /* 追加/回答 */
 
@@ -213,6 +219,10 @@ function openThread(id: number) {
   detailVisible.value = true
   getDetail()
 }
+function continueInAssistant(id: number) {
+  detailVisible.value = false
+  router.push({ path: '/todo/assistant', query: { reference: id } })
+}
 function goSettings() {
   router.push('/todo/settings')
 }
@@ -279,6 +289,13 @@ function stopPolling() {
 }
 
 // --------------------------------- page init ---------------------------------
+watch(() => [route.path, route.query.thread, route.query.view], ([path, thread, view]) => {
+  const id = Number(thread)
+  if (path === '/todo' && Number.isSafeInteger(id) && id > 0) {
+    openThread(id)
+    if (view === 'timeline') detailTab.value = 'timeline'
+  }
+}, { immediate: true })
 onMounted(() => {
   refresh(false)
   startPolling()
@@ -295,6 +312,10 @@ onBeforeUnmount(stopPolling)
 </script>
 
 <style scoped lang="scss">
+.todo-entry {
+  display: flex;
+  margin-bottom: 16px;
+}
 .todo-bar {
   display: flex;
   align-items: center;
