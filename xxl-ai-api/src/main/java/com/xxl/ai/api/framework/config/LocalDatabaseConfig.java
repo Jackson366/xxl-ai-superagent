@@ -51,7 +51,8 @@ public class LocalDatabaseConfig {
                 if (markerTableExists(getDataSource())) {
                     // 旧库只执行幂等增量，保留已有业务数据和配置
                     ResourceDatabasePopulator migration = new ResourceDatabasePopulator(
-                            new ClassPathResource("db/upgrade_20261111_todo_observation_h2.sql"));
+                            new ClassPathResource("db/upgrade_20261111_todo_observation_h2.sql"),
+                            new ClassPathResource("db/upgrade_20261112_todo_assistant_h2.sql"));
                     migration.setSqlScriptEncoding(StandardCharsets.UTF_8.name());
                     migration.execute(getDataSource());
                     return;

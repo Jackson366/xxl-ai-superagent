@@ -111,6 +111,8 @@ public class TodoConstant {
 
     /** 副作用：研判（key=evalId） */
     public static final String EFFECT_ASSESSMENT = "assessment";
+    /** 助理入口回复（key=消息ID） */
+    public static final String EFFECT_ASSISTANT = "assistant";
     /** 副作用：启动派工（key=assignmentId） */
     public static final String EFFECT_LAUNCH = "launch";
     /** 副作用：投递输入（key=ticketId） */

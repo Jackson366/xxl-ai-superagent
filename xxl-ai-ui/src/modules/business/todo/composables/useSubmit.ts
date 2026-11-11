@@ -8,7 +8,7 @@ import { submitTodo } from '../api'
 import type { TodoSubmit } from '../types'
 
 /** 生成请求标识：非安全上下文（HTTP 且非 localhost）没有 crypto.randomUUID，退回时间戳 + 随机数 */
-function newRequestId(): string {
+export function newRequestId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID()
   }

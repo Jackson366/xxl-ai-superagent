@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+    "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.xxl.ai.api.business.todo.mapper.TodoAssistantTurnMapper">
+    <resultMap id="turn" type="com.xxl.ai.api.business.todo.model.entity.TodoAssistantTurn">
+        <constructor>
+            <idArg column="id" javaType="_long"/>
+            <arg column="content" javaType="String"/>
+            <arg column="reply" javaType="String"/>
+            <arg column="state" javaType="String"/>
+            <arg column="reference_id" javaType="Long"/>
+            <arg column="reference_title" javaType="String"/>
+            <arg column="revises_id" javaType="Long"/>
+            <arg column="target_ticket_id" javaType="Long"/>
+            <arg column="attention_id" javaType="String"/>
+            <arg column="proposal" javaType="String"/>
+            <arg column="error_code" javaType="String"/>
+            <arg column="thread_id" javaType="Long"/>
+        </constructor>
+    </resultMap>
+
+    <insert id="insert">
+        INSERT INTO xxl_ai_todo_assistant_turn (
+            user_id, request_id, content, state, reference_id, reference_title, revises_id, add_time, update_time
+        ) VALUES (
+            #{userId}, #{requestId}, #{content}, 'pending', #{referenceId}, #{referenceTitle}, #{revisesId}, NOW(), NOW()
+        )
+    </insert>
+
+    <select id="loadByRequest" resultMap="turn">
+        SELECT * FROM xxl_ai_todo_assistant_turn WHERE user_id = #{userId} AND request_id = #{requestId}
+        <if test="lock">FOR UPDATE</if>
+    </select>
+
+    <select id="load" resultMap="turn">
+        SELECT * FROM xxl_ai_todo_assistant_turn WHERE user_id = #{userId} AND id = #{id}
+        <if test="lock">FOR UPDATE</if>
+    </select>
+
+    <select id="recent" resultMap="turn">
+        SELECT * FROM xxl_ai_todo_assistant_turn WHERE user_id = #{userId}
+        <if test="beforeId != null">AND id &lt; #{beforeId}</if>
+        <if test="resolvedOnly">AND reply IS NOT NULL</if>
+        ORDER BY id DESC LIMIT #{limit}
+    </select>
+
+    <update id="resolve">
+        UPDATE xxl_ai_todo_assistant_turn
+        SET state = #{state}, reply = #{reply}, proposal = #{proposal}, target_ticket_id = #{targetTicketId},
+            attention_id = #{attentionId}, error_code = #{errorCode}, update_time = NOW()
+        WHERE user_id = #{userId} AND id = #{id} AND state = 'pending'
+    </update>
+
+    <update id="submit">
+        UPDATE xxl_ai_todo_assistant_turn SET state = 'submitted', thread_id = #{threadId}, update_time = NOW()
+        WHERE user_id = #{userId} AND id = #{id} AND state = 'proposed'
+    </update>
+
+    <update id="replaceProposal">
+        UPDATE xxl_ai_todo_assistant_turn SET state = 'replaced', update_time = NOW()
+        WHERE user_id = #{userId} AND id = #{id} AND state = 'proposed'
+    </update>
+
+    <update id="retry">
+        UPDATE xxl_ai_todo_assistant_turn SET state = 'pending', error_code = NULL, update_time = NOW()
+        WHERE user_id = #{userId} AND id = #{id} AND state = 'failed'
+    </update>
+</mapper>

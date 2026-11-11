@@ -19,6 +19,7 @@ import com.xxl.ai.api.business.todo.model.entity.TodoTicket;
 import com.xxl.ai.api.business.todo.model.json.TodoEvaluating;
 import com.xxl.ai.api.business.todo.model.json.TodoSettingsContent;
 import com.xxl.ai.api.business.todo.service.TodoEffectService;
+import com.xxl.ai.api.business.todo.service.TodoAssistantService;
 import com.xxl.ai.api.business.todo.service.TodoEngineService;
 import com.xxl.ai.api.business.todo.service.TodoSettingsService;
 import com.xxl.ai.api.business.todo.service.TodoObservationService;
@@ -32,6 +33,7 @@ import jakarta.annotation.Resource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.event.TransactionalEventListener;
@@ -49,6 +51,7 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 
 /**
  * 超级助理 副作用调度器实现
@@ -89,6 +92,9 @@ public class TodoEffectServiceImpl implements TodoEffectService {
     private TodoTicketMapper ticketMapper;
     @Resource
     private SuperagentRouterTool routerTool;
+    @Resource
+    @Lazy
+    private TodoAssistantService assistant; /* 仅在调度时调用，助理读端概览依赖调度器 */
     @Resource
     private SuperagentWorkerTool workerTool;
     @Resource
@@ -210,10 +216,11 @@ public class TodoEffectServiceImpl implements TodoEffectService {
             dispatchReplies();
             if (!worker.paused) {
                 startEvals();
-                dispatchAssessments();
+                dispatchAssessments(TodoConstant.EFFECT_ASSESSMENT, this::assess);
                 dispatchRounds(TodoConstant.EFFECT_LAUNCH, worker.maxWorkers);
                 dispatchRounds(TodoConstant.EFFECT_DELIVERY, worker.maxWorkers + TodoConstant.HUMAN_RESERVED_SLOTS);
             }
+            dispatchAssessments(TodoConstant.EFFECT_ASSISTANT, this::answerAssistant);
             lastTickError = null;
         } catch (Exception e) {
             String error = String.valueOf(e.getMessage());
@@ -263,24 +270,36 @@ public class TodoEffectServiceImpl implements TodoEffectService {
     /**
      * 派发研判：并发受限，Router 调用在研判线程池执行
      */
-    private void dispatchAssessments() {
+    private void dispatchAssessments(String kind, Consumer<TodoEffect> run) {
         int free = ASSESSMENT_CONCURRENCY - assessing.get();
         if (free <= 0) {
             return;
         }
-        for (TodoEffect effect : effectMapper.listDue(TodoConstant.EFFECT_ASSESSMENT, free, new Date())) {
+        for (TodoEffect effect : effectMapper.listDue(kind, free, new Date())) {
             if (!claim(effect)) {
                 continue;
             }
             assessing.incrementAndGet();
             assessmentPool.execute(() -> {
                 try {
-                    assess(effect);
+                    run.accept(effect);
                 } finally {
                     assessing.decrementAndGet();
                     kick();
                 }
             });
+        }
+    }
+
+    /* 回复与研判共用受限模型线程池，独立于 Worker 暂停开关 */
+    private void answerAssistant(TodoEffect effect) {
+        try {
+            assistant.respond(Math.toIntExact(payloadLong(effect, "userId")), Long.parseLong(effect.getEffectKey()));
+            finish(effect);
+        } catch (Exception error) {
+            if (!stopping) {
+                fail(effect, error, TodoConstant.RETRY_INITIAL_MS, TodoConstant.RETRY_MAX_MS);
+            }
         }
     }
 
@@ -332,18 +351,23 @@ public class TodoEffectServiceImpl implements TodoEffectService {
         if (free <= 0) {
             return;
         }
-        for (TodoEffect effect : effectMapper.listDue(kind, free, new Date())) {
-            if (!claim(effect)) {
+        for (TodoEffect effect : effectMapper.listDue(kind, free + runs.size(), new Date())) {
+            if (free == 0) {
+                break;
+            }
+            boolean launch = TodoConstant.EFFECT_LAUNCH.equals(kind);
+            long ticketId = launch ? payloadLong(effect, "ticketId") : Long.parseLong(effect.getEffectKey());
+            // 同一工单先等上一轮退出，再启动停止后的新派工
+            if (runs.containsKey(ticketId) || !claim(effect)) {
                 continue;
             }
             try {
-                boolean launch = TodoConstant.EFFECT_LAUNCH.equals(kind);
-                long ticketId = launch ? payloadLong(effect, "ticketId") : Long.parseLong(effect.getEffectKey());
                 Long assignmentId = launch ? Long.parseLong(effect.getEffectKey()) : null;
                 TodoRound round = engine.startRound(ticketId, assignmentId, launch);
                 finish(effect);
                 if (round != null) {
                     runRound(round);
+                    free--;
                 }
             } catch (Exception e) {
                 fail(effect, e, TodoConstant.RETRY_INITIAL_MS, TodoConstant.RETRY_MAX_MS);
@@ -544,7 +568,9 @@ public class TodoEffectServiceImpl implements TodoEffectService {
     private boolean claim(TodoEffect effect) {
         // 时间统一取应用时钟（MySQL 与 H2 通用，不依赖数据库时间函数）
         long now = System.currentTimeMillis();
-        Date ownerUntil = new Date(now + TodoConstant.EFFECT_LEASE_SECONDS * 1000L);
+        // 助理回复可能持续至模型的流式超时，较长租期减少跨实例重复生成
+        long lease = TodoConstant.EFFECT_ASSISTANT.equals(effect.getKind()) ? 600 : TodoConstant.EFFECT_LEASE_SECONDS;
+        Date ownerUntil = new Date(now + lease * 1000L);
         return effectMapper.claim(effect.getId(), effect.getGeneration(), owner, ownerUntil, new Date(now)) == 1;
     }
 
