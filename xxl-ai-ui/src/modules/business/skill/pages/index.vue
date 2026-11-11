@@ -35,6 +35,11 @@
           <el-button type="primary" plain icon="Plus" @click="handleAdd" v-hasPermi="['skill:default']">{{ t('common.add') }}</el-button>
         </el-col>
         <el-col :span="1.5">
+          <el-button type="primary" plain icon="Upload" @click="uploadVisible = true" v-hasPermi="['skill:default']">
+            {{ t('business.skill.upload') }}
+          </el-button>
+        </el-col>
+        <el-col :span="1.5">
           <el-button type="success" plain icon="Edit" :disabled="table.single" @click="handleUpdate" v-hasPermi="['skill:default']">
             {{ t('common.modify') }}
           </el-button>
@@ -112,6 +117,7 @@
         </div>
       </template>
     </el-dialog>
+    <SkillUploadDialog v-model="uploadVisible" @imported="getList" @open-content="goContent" />
   </div>
 </template>
 
@@ -121,6 +127,7 @@ import { useRouter } from 'vue-router'
 import { ref } from 'vue'
 import { t } from '@/i18n'
 import { listSkill, addSkill, updateSkill, delSkill } from '../api'
+import SkillUploadDialog from '../components/SkillUploadDialog.vue'
 import { useFormReset } from '@/composables/useFormReset'
 import { usePageParams } from '@/composables/usePageParams'
 import modal from '@/utils/modal'
@@ -136,6 +143,7 @@ interface SkillForm extends Skill {}
 
 // --------------------------------- ref data ---------------------------------
 const formRef = ref<FormInstance>() /* 编辑表单 ref */
+const uploadVisible = ref(false)
 
 const queryParams = ref<SkillQuery>({ pageNum: 1, pageSize: 10, name: undefined, status: -1 })
 

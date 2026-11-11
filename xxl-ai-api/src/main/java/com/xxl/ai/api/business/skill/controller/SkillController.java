@@ -10,11 +10,15 @@ import com.xxl.tool.response.PageModel;
 import com.xxl.tool.response.Response;
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.dao.DuplicateKeyException;
+import org.springframework.http.MediaType;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
@@ -64,6 +68,25 @@ public class SkillController {
             return Response.ofFail(spaceResp.getMsg());
         }
         return skillService.insert(spaceResp.getData().getSpaceId(), dto);
+    }
+
+    /**
+     * 上传 Markdown 或 ZIP 技能包
+     */
+    @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @XxlSso(permission = "skill:default")
+    public Response<List<SkillDTO>> upload(HttpServletRequest request,
+                                           @RequestHeader(value = "xxl-space-id", required = false) Integer spaceId,
+                                           @RequestParam("file") MultipartFile file) {
+        Response<SpaceContext> spaceResp = spaceService.checkSpace(request, spaceId);
+        if (!spaceResp.isSuccess()) {
+            return Response.ofFail(spaceResp.getMsg());
+        }
+        try {
+            return skillService.upload(spaceResp.getData().getSpaceId(), file);
+        } catch (DuplicateKeyException ex) {
+            return Response.ofFail("当前空间已存在同名 Skill，或技能包内存在同名文件");
+        }
     }
 
     /**

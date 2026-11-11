@@ -313,7 +313,7 @@ public class SkillFileServiceImpl implements SkillFileService {
     /**
      * 从文件名推断扩展名（小写，无扩展名默认 txt）
      */
-    private String parseFileType(String name) {
+    static String parseFileType(String name) {
         int dot = name.lastIndexOf('.');
         if (dot < 0 || dot == name.length() - 1) {
             return "txt";
