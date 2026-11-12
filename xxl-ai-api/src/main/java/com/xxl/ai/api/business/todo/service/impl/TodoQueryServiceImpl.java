@@ -1,5 +1,6 @@
 package com.xxl.ai.api.business.todo.service.impl;
 
+import com.google.gson.JsonSyntaxException;
 import com.xxl.ai.api.business.todo.constant.TodoConstant;
 import com.xxl.ai.api.business.todo.mapper.TodoAssignmentMapper;
 import com.xxl.ai.api.business.todo.mapper.TodoDecisionMapper;
@@ -8,6 +9,7 @@ import com.xxl.ai.api.business.todo.mapper.TodoMessageMapper;
 import com.xxl.ai.api.business.todo.mapper.TodoThreadMapper;
 import com.xxl.ai.api.business.todo.mapper.TodoTicketMapper;
 import com.xxl.ai.api.business.todo.mapper.TodoTriggerMapper;
+import com.xxl.ai.api.business.todo.model.dto.TodoAssistantNoticeDTO;
 import com.xxl.ai.api.business.todo.model.dto.TodoAssignmentDTO;
 import com.xxl.ai.api.business.todo.model.dto.TodoDecisionDTO;
 import com.xxl.ai.api.business.todo.model.dto.TodoMessageDTO;
@@ -37,6 +39,7 @@ import com.xxl.tool.response.PageModel;
 import com.xxl.tool.response.Response;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.Date;
@@ -146,6 +149,34 @@ public class TodoQueryServiceImpl implements TodoQueryService {
         overview.setMaxWorkers(settingsService.worker().maxWorkers);
         overview.setUnread(messageMapper.pageListCount(userId, 0));
         return overview;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<TodoAssistantNoticeDTO> assistantNotices(int userId) {
+        List<TodoAssistantNoticeDTO> notices = new ArrayList<>();
+        for (TodoTicket ticket : ticketMapper.listAssistantNoticeCandidates(userId)) {
+            List<TodoAssignment> assignments = assignmentMapper.listByTicket(ticket.getId());
+            List<TodoInput> inputs = inputMapper.listByTicket(ticket.getId());
+            String stage = TodoStageTool.ticketStage(ticket, assignments, inputs);
+            if (TodoConstant.STAGE_ANSWER.equals(stage)) {
+                TodoAttention attention = TodoJsonTool.fromJson(ticket.getAttention(), TodoAttention.class);
+                if (attention != null && attention.id != null) {
+                    notices.add(new TodoAssistantNoticeDTO("answer-" + ticket.getId() + "-" + attention.id,
+                            ticket.getThreadId(), ticket.getId(), ticket.getTitle(), stage, attention.question, attention.id, false));
+                }
+            } else if (TodoConstant.STAGE_FAILED.equals(stage) || TodoConstant.STAGE_DELIVERY.equals(stage)) {
+                TodoAssignment latest = TodoStageTool.latest(assignments);
+                boolean delivery = TodoConstant.STAGE_DELIVERY.equals(stage);
+                String occurrence = latest == null ? "0" : latest.getId() + "-"
+                        + (latest.getReportTime() == null ? 0 : latest.getReportTime().getTime());
+                String content = delivery ? deliveryReason(ticket.getDeliveryError()) : latest.getReportSummary();
+                notices.add(new TodoAssistantNoticeDTO(stage + "-" + ticket.getId() + "-" + occurrence,
+                        ticket.getThreadId(), ticket.getId(), ticket.getTitle(), stage, content, null,
+                        TodoStageTool.canRetry(ticket, assignments, inputs)));
+            }
+        }
+        return notices;
     }
 
     @Override
@@ -351,6 +382,16 @@ public class TodoQueryServiceImpl implements TodoQueryService {
     }
 
     // ---------------------- 工具 ----------------------
+
+    private String deliveryReason(String error) {
+        try {
+            Map<?, ?> detail = TodoJsonTool.fromJson(error, Map.class);
+            return detail != null && detail.get("error") instanceof String text ? text : null;
+        } catch (JsonSyntaxException ignored) {
+            // 兼容投递错误为纯文本的历史数据。
+            return error;
+        }
+    }
 
     private TodoReason firstReason(TodoDecision decision) {
         TodoReason[] reasons = TodoJsonTool.fromJson(decision.getReason(), TodoReason[].class);

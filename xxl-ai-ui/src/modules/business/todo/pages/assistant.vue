@@ -15,7 +15,7 @@
       </header>
 
       <section class="assistant-workspace">
-        <div v-if="!turns.length" class="assistant-welcome">
+        <div v-if="!timeline.length" class="assistant-welcome">
           <span class="assistant-mark"><el-icon><ChatDotRound /></el-icon></span>
           <h2>{{ t('business.todo.assistant.heading') }}</h2>
           <p>{{ t('business.todo.assistant.intro') }}</p>
@@ -24,64 +24,82 @@
           <div v-if="hasEarlier" class="assistant-earlier">
             <el-button text :loading="loadingEarlier" @click="loadEarlier">{{ t('business.todo.assistant.earlier') }}</el-button>
           </div>
-          <article v-for="turn in turns" :id="'assistant-turn-' + turn.id" :key="turn.id" class="assistant-turn">
-            <div class="assistant-user">
-              <div>{{ turn.content }}</div>
-              <small v-if="turn.referenceTitle">{{ t('business.todo.assistant.referenceTitle', [turn.referenceTitle]) }}</small>
-            </div>
-            <div class="assistant-response">
-              <span class="assistant-avatar" aria-hidden="true"><el-icon><ChatDotRound /></el-icon></span>
-              <div class="assistant-response-body">
-                <p v-if="turn.state === 'pending'" class="assistant-muted">{{ t('business.todo.assistant.thinking') }}</p>
-                <template v-if="turn.state === 'failed'">
-                  <p>{{ reasonLabel(turn.errorCode) || t('business.todo.assistant.failed') }}</p>
-                  <div class="assistant-actions">
-                    <el-button size="small" :loading="workingTurn === turn.id" @click="retryTurn(turn.id)">{{ t('business.todo.retry') }}</el-button>
-                    <el-button v-if="turn.errorCode?.startsWith('model')" size="small" text @click="router.push('/todo/settings')">
-                      {{ t('business.todo.goSettings') }}
-                    </el-button>
-                  </div>
-                </template>
-                <MarkdownView v-if="turn.reply" :content="turn.reply" />
-                <div v-if="turn.proposal" class="assistant-card">
-                  <strong>{{ t(turn.attentionId ? 'business.todo.assistant.answerScope' : 'business.todo.assistant.scope') }}</strong>
-                  <p class="assistant-scope">{{ turn.proposal }}</p>
-                  <div class="assistant-actions">
-                    <el-button
-                      v-if="turn.state === 'proposed'"
-                      type="primary"
-                      size="small"
-                      :loading="workingTurn === turn.id"
-                      @click="confirmTurn(turn.id)"
-                    >{{ t(turn.attentionId ? 'business.todo.assistant.confirmAnswer' : 'business.todo.assistant.confirm') }}</el-button>
-                    <el-button v-if="turn.state === 'proposed' && !turn.attentionId" size="small" @click="adjustScope(turn)">
-                      {{ t('business.todo.assistant.adjust') }}
-                    </el-button>
-                    <span v-if="turn.state === 'replaced'" class="assistant-muted">{{ t('business.todo.assistant.replaced') }}</span>
-                    <el-button v-if="turn.threadId" size="small" @click="openTask(turn.threadId)">
-                      {{ t('business.todo.assistant.openTask') }}
-                    </el-button>
+          <template v-for="entry in timeline" :key="entry.key">
+            <article v-if="entry.turn" :id="'assistant-turn-' + entry.turn.id" class="assistant-turn">
+              <div class="assistant-user">
+                <div>{{ entry.turn.content }}</div>
+                <small v-if="entry.turn.referenceTitle">{{ t('business.todo.assistant.referenceTitle', [entry.turn.referenceTitle]) }}</small>
+              </div>
+              <div class="assistant-response">
+                <span class="assistant-avatar" aria-hidden="true"><el-icon><ChatDotRound /></el-icon></span>
+                <div class="assistant-response-body">
+                  <p v-if="entry.turn.state === 'pending'" class="assistant-muted">{{ t('business.todo.assistant.thinking') }}</p>
+                  <template v-if="entry.turn.state === 'failed'">
+                    <p>{{ reasonLabel(entry.turn.errorCode) || t('business.todo.assistant.failed') }}</p>
+                    <div class="assistant-actions">
+                      <el-button size="small" :loading="workingTurn === entry.turn.id" @click="retryTurn(entry.turn.id)">{{ t('business.todo.retry') }}</el-button>
+                      <el-button v-if="entry.turn.errorCode?.startsWith('model')" size="small" text @click="router.push('/todo/settings')">
+                        {{ t('business.todo.goSettings') }}
+                      </el-button>
+                    </div>
+                  </template>
+                  <MarkdownView v-if="entry.turn.reply" :content="entry.turn.reply" />
+                  <div v-if="entry.turn.proposal" class="assistant-card">
+                    <strong>{{ t(entry.turn.attentionId ? 'business.todo.assistant.answerScope' : 'business.todo.assistant.scope') }}</strong>
+                    <p class="assistant-scope">{{ entry.turn.proposal }}</p>
+                    <div class="assistant-actions">
+                      <el-button
+                        v-if="entry.turn.state === 'proposed'"
+                        type="primary"
+                        size="small"
+                        :loading="workingTurn === entry.turn.id"
+                        @click="confirmTurn(entry.turn.id)"
+                      >{{ t(entry.turn.attentionId ? 'business.todo.assistant.confirmAnswer' : 'business.todo.assistant.confirm') }}</el-button>
+                      <el-button v-if="entry.turn.state === 'proposed' && !entry.turn.attentionId" size="small" @click="adjustScope(entry.turn)">
+                        {{ t('business.todo.assistant.adjust') }}
+                      </el-button>
+                      <span v-if="entry.turn.state === 'replaced'" class="assistant-muted">{{ t('business.todo.assistant.replaced') }}</span>
+                      <el-button v-if="entry.turn.threadId" size="small" @click="openTask(entry.turn.threadId)">
+                        {{ t('business.todo.assistant.openTask') }}
+                      </el-button>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          </article>
+            </article>
+            <article v-else class="assistant-turn" :class="{ 'assistant-related-notice': entry.notice.related }">
+              <div class="assistant-response">
+                <span v-if="!entry.notice.related" class="assistant-avatar" aria-hidden="true"><el-icon><ChatDotRound /></el-icon></span>
+                <div class="assistant-response-body">
+                  <AssistantNotice
+                    :notice="entry.notice.data"
+                    :status="entry.notice.status"
+                    :reply-disabled="sending || !!replyTarget"
+                    :retrying="retryingNotices.has(entry.notice.data.id)"
+                    @reply="startReply(entry.notice)"
+                    @retry="retryNotice(entry.notice)"
+                  />
+                </div>
+              </div>
+              <div v-if="entry.notice.answer" class="assistant-user">{{ entry.notice.answer }}</div>
+            </article>
+          </template>
         </div>
 
         <div class="assistant-dock">
-          <div v-if="pendingProposal || trackedDetail" class="assistant-activity">
+          <div v-if="pendingProposal || trackedActivity" class="assistant-activity">
             <template v-if="pendingProposal">
               <span>{{ t('business.todo.assistant.pendingConfirmation') }}</span>
               <el-button size="small" text @click="jumpToTurn(pendingProposal.id)">{{ t('business.todo.assistant.review') }}</el-button>
             </template>
-            <template v-else-if="trackedDetail">
-              <span class="assistant-task-title">{{ trackedDetail.thread.title }}</span>
-              <el-tag size="small" :type="trackedTicket?.endedOutcome === 'stopped' ? 'warning' : stageType(trackedDetail.thread.stage)">
-                {{ trackedTicket?.endedOutcome ? outcomeLabel(trackedTicket.endedOutcome) : stageLabel(trackedDetail.thread.stage) }}
+            <template v-else-if="trackedActivity">
+              <span class="assistant-task-title">{{ trackedActivity.thread.title }}</span>
+              <el-tag size="small" :type="trackedTicket?.endedOutcome === 'stopped' ? 'warning' : stageType(trackedActivity.thread.stage)">
+                {{ trackedTicket?.endedOutcome ? outcomeLabel(trackedTicket.endedOutcome) : stageLabel(trackedActivity.thread.stage) }}
               </el-tag>
               <div class="assistant-actions">
-                <el-button size="small" text @click="openTask(trackedDetail.thread.id)">
-                  {{ t(trackedDetail.thread.stage === 'ended' ? 'business.todo.assistant.result' : 'business.todo.assistant.openTask') }}
+                <el-button size="small" text @click="openTask(trackedActivity.thread.id)">
+                  {{ t(trackedActivity.thread.stage === 'ended' ? 'business.todo.assistant.result' : 'business.todo.assistant.openTask') }}
                 </el-button>
                 <el-button v-if="trackedTicket && trackedTicket.stage !== 'ended'" size="small" text @click="manageTicket(trackedTicket, 'stop')">
                   {{ t('business.todo.stop') }}
@@ -93,32 +111,46 @@
             </template>
           </div>
 
-          <div v-if="!turns.length" class="assistant-examples">
+          <div v-if="!timeline.length && !replyTarget" class="assistant-examples">
             <el-button v-for="example in examples" :key="example.label" size="small" text @click="fillExample(t(example.prompt))">
               {{ t(example.label) }}
             </el-button>
           </div>
           <form class="assistant-composer" @submit.prevent="send">
-            <label for="todo-assistant-message">{{ t('business.todo.assistant.message') }}</label>
+            <div v-if="replyTarget" class="assistant-reply-context">
+              <label for="todo-assistant-message">
+                {{ t('business.todo.assistant.noticeReplyTo', [replyTarget.data.title]) }}
+              </label>
+              <el-button text size="small" :disabled="sending" @click="cancelReply">
+                {{ t('business.todo.assistant.noticeCancelReply') }}
+              </el-button>
+            </div>
+            <label v-else for="todo-assistant-message">{{ t('business.todo.assistant.message') }}</label>
+            <p v-if="replyTarget?.status === 'resolved'" class="assistant-muted" role="status">
+              {{ t('business.todo.assistant.noticeResolved') }}
+            </p>
             <el-input
               id="todo-assistant-message"
               ref="input"
-              v-model="draft"
+              v-model="composerText"
               type="textarea"
+              :disabled="!!replyTarget && sending"
               :autosize="{ minRows: 2, maxRows: 6 }"
               maxlength="4000"
-              :placeholder="t('business.todo.assistant.placeholder')"
+              :placeholder="t(replyTarget ? 'business.todo.assistant.noticeReplyPlaceholder' : 'business.todo.assistant.placeholder')"
+              @compositionstart="composing = true"
+              @compositionend="composing = false"
               @keydown="handleKey"
             />
             <div class="assistant-composer-actions">
-              <div class="assistant-actions">
+              <div v-if="!replyTarget" class="assistant-actions">
                 <el-button text size="small" icon="Link" @click="openReferences">{{ t('business.todo.assistant.reference') }}</el-button>
                 <el-tag v-if="reference" closable @close="clearReference">{{ reference.title }}</el-tag>
                 <el-tag v-if="editingTurn" type="info" closable @close="editingTurn = undefined">
                   {{ t('business.todo.assistant.editing') }}
                 </el-tag>
               </div>
-              <el-button native-type="submit" type="primary" icon="Promotion" :loading="sending" :disabled="!draft.trim()">
+              <el-button native-type="submit" type="primary" icon="Promotion" :loading="sending" :disabled="!canSend">
                 {{ t('business.todo.assistant.send') }}
               </el-button>
             </div>
@@ -159,12 +191,26 @@ import { useRoute, useRouter } from 'vue-router'
 import { t } from '@/i18n'
 import modal from '@/utils/modal'
 import MarkdownView from '@/modules/business/chat/components/MarkdownView.vue'
+import AssistantNotice from '../components/AssistantNotice.vue'
 import {
-  confirmAssistantTurn, getTodo, listAssistantTurns, listTodo, restartAssistantTicket, retryAssistantTurn, sendAssistantTurn, stopTicket
+  answerAssistantNotice, confirmAssistantTurn, getTodo, listAssistantNotices, listAssistantTurns, listTodo,
+  restartAssistantTicket, retryAssistantTurn, retryTicket, sendAssistantTurn, stopTicket
 } from '../api'
 import { newRequestId } from '../composables/useSubmit'
 import { outcomeLabel, reasonLabel, stageLabel, stageType } from '../composables/useTodoLabel'
-import type { TodoAssistantTurn, TodoThread, TodoThreadDetail, TodoTicket } from '../types'
+import type { TodoAssistantNotice, TodoAssistantTurn, TodoThread, TodoThreadDetail, TodoTicket } from '../types'
+
+interface NoticeEntry {
+  data: TodoAssistantNotice
+  afterTurnId: number
+  related: boolean
+  status: 'active' | 'answered' | 'retried' | 'resolved'
+  answer?: string
+}
+
+type TimelineEntry =
+  | { key: string; turn: TodoAssistantTurn; notice?: never }
+  | { key: string; notice: NoticeEntry; turn?: never }
 
 // --------------------------------- ref data ---------------------------------
 const route = useRoute()
@@ -172,6 +218,36 @@ const router = useRouter()
 const input = ref<{ focus: () => void }>()
 const messageLog = ref<HTMLElement>()
 const draft = ref('')
+const replyDraft = ref('')
+const replyTargetId = ref<string>()
+const composing = ref(false)
+const notices = ref<NoticeEntry[]>([])
+const waitingNotices = ref<TodoAssistantNotice[]>([])
+const retryingNotices = ref(new Set<string>())
+const replyTarget = computed(() => notices.value.find(notice => notice.data.id === replyTargetId.value))
+const composerText = computed({
+  get: () => replyTarget.value ? replyDraft.value : draft.value,
+  set: (value: string) => {
+    if (replyTarget.value) replyDraft.value = value
+    else draft.value = value
+  }
+})
+const answerPayload = computed(() => {
+  const target = replyTarget.value?.data
+  return target?.attentionId ? {
+    threadId: target.threadId,
+    ticketId: target.ticketId,
+    attentionId: target.attentionId,
+    content: replyDraft.value.trim()
+  } : undefined
+})
+const lastNoticeAnswer = ref<{ key: string; payload: string }>()
+const canSend = computed(() => {
+  if (!composerText.value.trim()) return false
+  if (!replyTarget.value) return true
+  return !!answerPayload.value && (replyTarget.value.status === 'active' ||
+    lastNoticeAnswer.value?.payload === JSON.stringify(answerPayload.value))
+})
 const turns = ref<TodoAssistantTurn[]>([])
 const reference = ref<Pick<TodoThread, 'id' | 'title'>>()
 const editingTurn = ref<number>()
@@ -187,7 +263,26 @@ const hasEarlier = ref(false)
 const trackedDetail = ref<TodoThreadDetail>()
 const pendingProposal = computed(() => [...turns.value].reverse().find(turn => turn.state === 'proposed'))
 const trackedId = computed(() => [...turns.value].reverse().find(turn => turn.threadId)?.threadId)
-const trackedTicket = computed(() => trackedDetail.value?.tickets.find(ticket => ticket.id === trackedDetail.value?.thread.ticketId))
+const trackedActivity = computed(() => {
+  const detail = trackedDetail.value
+  return detail && !['answer', 'failed', 'delivery'].includes(detail.thread.stage) ? detail : undefined
+})
+const trackedTicket = computed(() => trackedActivity.value?.tickets.find(ticket => ticket.id === trackedActivity.value?.thread.ticketId))
+const canPublishNotices = computed(() => !draft.value.trim() && !composing.value && !sending.value &&
+  !replyTarget.value && !turns.value.some(turn => turn.state === 'pending'))
+const timeline = computed<TimelineEntry[]>(() => {
+  const byTurn = new Map<number, TimelineEntry[]>()
+  for (const notice of notices.value) {
+    const group = byTurn.get(notice.afterTurnId) ?? []
+    group.push({ key: notice.data.id, notice })
+    byTurn.set(notice.afterTurnId, group)
+  }
+  const entries = [...(byTurn.get(0) ?? [])]
+  for (const turn of turns.value) {
+    entries.push({ key: 'turn-' + turn.id, turn }, ...(byTurn.get(turn.id) ?? []))
+  }
+  return entries
+})
 const examples = [
   { label: 'business.todo.assistant.exampleTasks', prompt: 'business.todo.assistant.promptTasks' },
   { label: 'business.todo.assistant.exampleMeeting', prompt: 'business.todo.assistant.promptMeeting' },
@@ -209,18 +304,55 @@ async function scrollToLatest() {
   const log = messageLog.value
   if (log) log.scrollTop = log.scrollHeight
 }
+function nearLatest() {
+  const log = messageLog.value
+  return !log || log.scrollHeight - log.scrollTop - log.clientHeight < 32
+}
+function publishNotices() {
+  if (!canPublishNotices.value || !waitingNotices.value.length) return
+  const follow = nearLatest()
+  const latest = turns.value.at(-1)
+  for (const data of waitingNotices.value) {
+    notices.value.push({
+      data,
+      afterTurnId: latest?.id ?? 0,
+      related: data.stage !== 'answer' && latest?.referenceId === data.threadId,
+      status: 'active'
+    })
+  }
+  waitingNotices.value = []
+  if (follow) void scrollToLatest()
+}
+function updateNotices(items: TodoAssistantNotice[]) {
+  const active = new Map(items.map(notice => [notice.id, notice]))
+  for (const entry of notices.value) {
+    const current = active.get(entry.data.id)
+    if (current) {
+      entry.data = current
+      if (entry.status === 'resolved') entry.status = 'active'
+      active.delete(entry.data.id)
+    } else if (entry.status === 'active') {
+      entry.status = 'resolved'
+    }
+  }
+  waitingNotices.value = [...active.values()]
+}
 async function refresh() {
   if (refreshInFlight) return
   refreshInFlight = true
   const version = revision
   try {
-    const log = messageLog.value
-    const nearEnd = !log || log.scrollHeight - log.scrollTop - log.clientHeight < 96
-    const response = await listAssistantTurns()
-    if (version !== revision) return
-    if (!turns.value.length) hasEarlier.value = response.data.length === 30
-    merge(response.data)
-    if (nearEnd) void scrollToLatest()
+    const [messages, pendingNotices] = await Promise.allSettled([listAssistantTurns(), listAssistantNotices()])
+    if (version !== revision || !timer) return
+    const nearEnd = nearLatest()
+    if (messages.status === 'fulfilled') {
+      const items = messages.value.data
+      if (!turns.value.length) hasEarlier.value = items.length === 30
+      merge(items)
+      if (pendingNotices.status === 'fulfilled') updateNotices(pendingNotices.value.data)
+      publishNotices()
+      if (nearEnd) void scrollToLatest()
+    }
     const id = trackedId.value
     if (id && (trackedDetail.value?.thread.id !== id || !['ended', 'ignored'].includes(trackedDetail.value.thread.stage))) {
       const detail = await getTodo(id)
@@ -248,9 +380,56 @@ async function loadEarlier() {
     loadingEarlier.value = false
   }
 }
+function startReply(entry: NoticeEntry) {
+  if (sending.value || replyTarget.value || entry.status !== 'active') return
+  replyTargetId.value = entry.data.id
+  void nextTick(() => input.value?.focus())
+}
+function cancelReply() {
+  replyTargetId.value = undefined
+  replyDraft.value = ''
+  void nextTick(() => input.value?.focus())
+}
+async function sendNoticeReply(entry: NoticeEntry) {
+  const answer = answerPayload.value
+  if (!answer) return
+  const payload = JSON.stringify(answer)
+  if (lastNoticeAnswer.value?.payload !== payload) lastNoticeAnswer.value = { key: newRequestId(), payload }
+  sending.value = true
+  try {
+    await answerAssistantNotice({ ...answer, requestId: lastNoticeAnswer.value.key })
+    revision++
+    entry.status = 'answered'
+    entry.answer = answer.content
+    lastNoticeAnswer.value = undefined
+    cancelReply()
+  } catch {
+    // 保留回复及请求标识，用户可用原内容重试。
+  } finally {
+    sending.value = false
+  }
+}
+async function retryNotice(entry: NoticeEntry) {
+  const { id, ticketId } = entry.data
+  if (entry.status !== 'active' || retryingNotices.value.has(id)) return
+  retryingNotices.value.add(id)
+  try {
+    await retryTicket(ticketId)
+    revision++
+    entry.status = 'retried'
+  } catch {
+    // 请求层统一提示，下一次轮询复核工单状态。
+  } finally {
+    retryingNotices.value.delete(id)
+  }
+}
 async function send() {
+  if (!canSend.value || sending.value || composing.value) return
+  if (replyTarget.value) {
+    await sendNoticeReply(replyTarget.value)
+    return
+  }
   const content = draft.value.trim()
-  if (!content || sending.value) return
   const referenceId = reference.value?.id
   const revisesId = editingTurn.value
   const payload = JSON.stringify({ content, referenceId, revisesId })
@@ -337,6 +516,7 @@ function fillExample(text: string) {
   input.value?.focus()
 }
 function adjustScope(turn: TodoAssistantTurn) {
+  if (replyTarget.value) return
   editingTurn.value = turn.id
   if (!draft.value.trim()) draft.value = t('business.todo.assistant.adjustPrompt') + '\n'
   input.value?.focus()
@@ -371,15 +551,19 @@ function selectReference(row: { id?: unknown; title?: unknown }) {
 }
 function startPolling() {
   if (timer) return
-  void refresh()
   timer = setInterval(refresh, 3000)
+  void refresh()
 }
 function stopPolling() {
   if (timer) clearInterval(timer)
   timer = undefined
+  revision++
 }
 
 // --------------------------------- page init ---------------------------------
+watch(canPublishNotices, (ready) => {
+  if (ready) publishNotices()
+})
 watch(() => route.query.reference, async (value) => {
   const id = Number(value)
   if (route.path !== '/todo/assistant' || !Number.isSafeInteger(id) || id <= 0) return
@@ -443,6 +627,8 @@ onBeforeUnmount(stopPolling)
 }
 .assistant-earlier { text-align: center; }
 .assistant-turn { display: grid; gap: 16px; margin: 8px 0 28px; }
+.assistant-turn:has(+ .assistant-related-notice) { margin-bottom: 8px; }
+.assistant-related-notice { margin-inline-start: 40px; }
 .assistant-user {
   justify-self: end;
   max-width: 88%;
@@ -475,6 +661,9 @@ onBeforeUnmount(stopPolling)
 }
 .assistant-composer:focus-within { border-color: var(--el-color-primary); }
 .assistant-composer label { font-size: 13px; color: var(--el-text-color-secondary); }
+.assistant-composer-actions > .el-button:last-child { margin-inline-start: auto; }
+.assistant-reply-context { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.assistant-reply-context label { font-weight: 600; color: var(--el-text-color-primary); overflow-wrap: anywhere; }
 .assistant-actions :deep(.el-button + .el-button), .assistant-switch :deep(.el-button + .el-button) { margin-left: 0; }
 @media (max-width: 600px) {
   .assistant-workspace { padding: 16px 10px; }

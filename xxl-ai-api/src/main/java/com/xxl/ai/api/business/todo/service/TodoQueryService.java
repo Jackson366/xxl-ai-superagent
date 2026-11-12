@@ -1,5 +1,6 @@
 package com.xxl.ai.api.business.todo.service;
 
+import com.xxl.ai.api.business.todo.model.dto.TodoAssistantNoticeDTO;
 import com.xxl.ai.api.business.todo.model.dto.TodoMessageDTO;
 import com.xxl.ai.api.business.todo.model.dto.TodoOverviewDTO;
 import com.xxl.ai.api.business.todo.model.dto.TodoThreadDTO;
@@ -30,6 +31,9 @@ public interface TodoQueryService {
      * 概览：要我吗（需要你处理的待办）、健康吗（系统问题、就绪、负载、未读）
      */
     TodoOverviewDTO overview(int userId);
+
+    /** 当前用户在对话中可处理的待回复和失败工单 */
+    List<TodoAssistantNoticeDTO> assistantNotices(int userId);
 
     /**
      * 收件箱分页（readStatus=-1 不过滤）
