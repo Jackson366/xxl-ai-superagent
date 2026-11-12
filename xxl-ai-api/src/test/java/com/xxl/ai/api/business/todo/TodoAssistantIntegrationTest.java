@@ -17,11 +17,13 @@ import com.xxl.ai.api.business.todo.model.entity.TodoAssignment;
 import com.xxl.ai.api.business.todo.model.entity.TodoThread;
 import com.xxl.ai.api.business.todo.model.entity.TodoTicket;
 import com.xxl.ai.api.business.todo.model.entity.TodoTrigger;
+import com.xxl.ai.api.business.todo.model.json.TodoAttention;
 import com.xxl.ai.api.business.todo.model.json.TodoDisposition;
 import com.xxl.ai.api.business.todo.model.json.TodoMandate;
 import com.xxl.ai.api.business.todo.model.json.TodoSettingsContent;
 import com.xxl.ai.api.business.todo.service.TodoAssistantService;
 import com.xxl.ai.api.business.todo.service.TodoEngineService;
+import com.xxl.ai.api.business.todo.service.TodoQueryService;
 import com.xxl.ai.api.business.todo.service.TodoSettingsService;
 import com.xxl.ai.api.business.todo.service.impl.TodoEffectServiceImpl;
 import com.xxl.ai.api.business.todo.util.TodoJsonTool;
@@ -35,6 +37,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -62,6 +65,8 @@ class TodoAssistantIntegrationTest {
     TodoAssistantService assistant;
     @Autowired
     TodoEngineService engine;
+    @Autowired
+    TodoQueryService query;
     @Autowired
     TodoAssistantTurnMapper turns;
     @Autowired
@@ -156,6 +161,64 @@ class TodoAssistantIntegrationTest {
         assertEquals(List.of(primary.getId()), disposition.fanout);
         assertEquals(primary.getId(), disposition.targetTicketId);
         assertFalse(engine.requeue(1, trigger.getId()).isSuccess());
+    }
+
+    @Test
+    void noticesCoverBothTicketsAndUseLiveStateAfterAnswerAndRetry() {
+        TodoThread thread = new TodoThread();
+        thread.setUserId(1);
+        thread.setTitle("来自待办入口的任务");
+        threads.insert(thread);
+        TodoTicket waiting = ticket(thread.getId());
+        TodoTicket failed = ticket(thread.getId());
+        TodoTicket delivery = ticket(thread.getId());
+        thread.setSubscriptions(TodoJsonTool.longListJson(List.of(waiting.getId(), failed.getId(), delivery.getId())));
+        delivery.setDeliveryError(TodoJsonTool.toJson(Map.of("error", "投递超时", "at", 42)));
+        tickets.update(delivery);
+        threads.update(thread);
+
+        TodoAttention attention = new TodoAttention();
+        attention.id = UUID.randomUUID().toString();
+        attention.question = "按入库日期统计吗？";
+        waiting.setAttention(TodoJsonTool.toJson(attention));
+        tickets.update(waiting);
+        TodoAssignment report = new TodoAssignment();
+        report.setTicketId(failed.getId());
+        report.setState(TodoConstant.ASSIGNMENT_RUNNING);
+        report.setReportState(TodoConstant.REPORT_FAILED);
+        report.setReportSummary("读取仓库数据超时");
+        report.setReportTime(new Date());
+        assignments.insert(report);
+
+        var notices = query.assistantNotices(1).stream().filter(item -> item.threadId() == thread.getId()).toList();
+        assertEquals(3, notices.size());
+        assertEquals(attention.question, notices.getFirst().content());
+        assertEquals(attention.id, notices.getFirst().attentionId());
+        assertEquals("读取仓库数据超时", notices.get(1).content());
+        assertTrue(notices.get(1).canRetry());
+        assertEquals("投递超时", notices.getLast().content());
+        assertTrue(notices.getLast().canRetry());
+        assertTrue(query.assistantNotices(2).isEmpty());
+
+        TodoSubmitDTO answer = new TodoSubmitDTO();
+        answer.setRequestId(UUID.randomUUID().toString());
+        answer.setThreadId(thread.getId());
+        answer.setContent("按入库日期");
+        answer.setKind(TodoConstant.TRIGGER_ANSWER);
+        answer.setAttentionId(attention.id);
+        assertFalse(engine.submitFromAssistant(1, answer, failed.getId()).isSuccess());
+        assertTrue(engine.submitFromAssistant(1, answer, waiting.getId()).isSuccess());
+        assertTrue(engine.submitFromAssistant(1, answer, waiting.getId()).isSuccess());
+        var trigger = triggers.loadByKey(answer.getRequestId());
+        var disposition = TodoJsonTool.fromJson(trigger.getDisposition(), TodoDisposition.class);
+        assertEquals(List.of(waiting.getId()), disposition.fanout);
+        answer.setRequestId(UUID.randomUUID().toString());
+        assertFalse(engine.submitFromAssistant(1, answer, waiting.getId()).isSuccess());
+        assertFalse(engine.submit(1, answer).isSuccess());
+
+        assertTrue(engine.retry(1, failed.getId()).isSuccess());
+        assertTrue(engine.retry(1, delivery.getId()).isSuccess());
+        assertTrue(query.assistantNotices(1).stream().noneMatch(item -> item.threadId() == thread.getId()));
     }
 
     @Test

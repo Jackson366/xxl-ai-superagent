@@ -4,6 +4,7 @@
 import { request } from '@/utils/request'
 import type { Response, PageModel } from '@/types'
 import type {
+  TodoAssistantNotice,
   TodoAssistantTurn,
   TodoListQuery,
   TodoMessage,
@@ -120,4 +121,20 @@ export function retryAssistantTurn(id: number): Promise<Response<TodoAssistantTu
 
 export function restartAssistantTicket(id: number): Promise<Response<string>> {
   return request({ url: '/todo/assistant/restart', method: 'post', data: { id } })
+}
+
+/** 当前用户的待回复和失败工单 */
+export function listAssistantNotices(): Promise<Response<TodoAssistantNotice[]>> {
+  return request({ url: '/todo/assistant/notices', method: 'get' })
+}
+
+/** 直接回复原工单的指定提问 */
+export function answerAssistantNotice(data: {
+  requestId: string
+  threadId: number
+  ticketId: number
+  attentionId: string
+  content: string
+}): Promise<Response<number>> {
+  return request({ url: '/todo/assistant/answer', method: 'post', data, headers: { repeatSubmit: false } })
 }

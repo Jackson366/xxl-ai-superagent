@@ -1,8 +1,12 @@
 package com.xxl.ai.api.business.todo.controller;
 
+import com.xxl.ai.api.business.todo.constant.TodoConstant;
+import com.xxl.ai.api.business.todo.model.dto.TodoAssistantNoticeDTO;
+import com.xxl.ai.api.business.todo.model.dto.TodoSubmitDTO;
 import com.xxl.ai.api.business.todo.model.entity.TodoAssistantTurn;
 import com.xxl.ai.api.business.todo.service.TodoAssistantService;
 import com.xxl.ai.api.business.todo.service.TodoEngineService;
+import com.xxl.ai.api.business.todo.service.TodoQueryService;
 import com.xxl.sso.core.annotation.XxlSso;
 import com.xxl.sso.core.helper.XxlSsoHelper;
 import com.xxl.tool.response.Response;
@@ -32,10 +36,46 @@ public class TodoAssistantController {
     @Resource
     private TodoEngineService engine;
 
+    @Resource
+    private TodoQueryService query;
+
     @GetMapping("/turns")
     @XxlSso(permission = "todo:default")
     public Response<List<TodoAssistantTurn>> turns(HttpServletRequest request, @RequestParam(required = false) Long beforeId) {
         return Response.ofSuccess(assistant.recent(userId(request), beforeId));
+    }
+
+    @GetMapping("/notices")
+    @XxlSso(permission = "todo:default")
+    public Response<List<TodoAssistantNoticeDTO>> notices(HttpServletRequest request) {
+        return Response.ofSuccess(query.assistantNotices(userId(request)));
+    }
+
+    @PostMapping("/answer")
+    @XxlSso(permission = "todo:default")
+    public Response<Long> answer(HttpServletRequest request, @RequestBody Answer input) {
+        int userId = userId(request);
+        TodoSubmitDTO submit = new TodoSubmitDTO();
+        submit.setKind(TodoConstant.TRIGGER_ANSWER);
+        submit.setRequestId(input.requestId());
+        submit.setThreadId(input.threadId());
+        submit.setAttentionId(input.attentionId());
+        submit.setContent(input.content());
+        Response<Long> result;
+        try {
+            result = engine.submitFromAssistant(userId, submit, input.ticketId());
+        } catch (DuplicateKeyException collision) {
+            result = Response.ofFail("请求标识冲突");
+        }
+        if (result.isSuccess()) {
+            return result;
+        }
+        // 并发重发可能在原请求提交后才拿到工单锁，回读已受理的请求。
+        Long threadId = engine.findSubmitted(userId, input.requestId());
+        return threadId == null ? result : Response.ofSuccess(threadId);
+    }
+
+    public record Answer(String requestId, long threadId, long ticketId, String attentionId, String content) {
     }
 
     @PostMapping("/send")

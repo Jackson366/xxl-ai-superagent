@@ -97,6 +97,17 @@
 		ORDER BY t.id ASC
 	</select>
 
+	<select id="listAssistantNoticeCandidates" resultMap="TodoTicket">
+		SELECT <include refid="Base_Column_List" />
+		FROM xxl_ai_todo_ticket AS t
+		LEFT JOIN xxl_ai_todo_assignment AS a ON a.id = (
+			SELECT MAX(latest.id) FROM xxl_ai_todo_assignment AS latest WHERE latest.ticket_id = t.id
+		)
+		WHERE t.user_id = #{userId} AND t.ended_time IS NULL
+			AND (t.attention IS NOT NULL OR t.delivery_error IS NOT NULL OR a.report_state = 'failed')
+		ORDER BY t.id ASC
+	</select>
+
 	<select id="listLive" resultMap="TodoTicket">
 		SELECT <include refid="Base_Column_List" />
 		FROM xxl_ai_todo_ticket AS t

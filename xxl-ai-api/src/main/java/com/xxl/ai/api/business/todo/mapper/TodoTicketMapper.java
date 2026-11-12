@@ -29,6 +29,9 @@ public interface TodoTicketMapper {
     /** 查询线程的全部工单 */
     List<TodoTicket> listByThread(@Param("threadId") long threadId);
 
+    /** 查询当前用户有提问、投递错误或执行失败的未结束工单 */
+    List<TodoTicket> listAssistantNoticeCandidates(@Param("userId") int userId);
+
     /** 查询进行中的工单（调度与恢复用） */
     List<TodoTicket> listLive();
 

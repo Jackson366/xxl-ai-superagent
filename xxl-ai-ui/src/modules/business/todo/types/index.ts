@@ -277,3 +277,15 @@ export interface TodoAssistantTurn {
   errorCode?: string
   threadId?: number
 }
+
+/** 对话中需要用户处理的待办消息 */
+export interface TodoAssistantNotice {
+  id: string
+  threadId: number
+  ticketId: number
+  title: string
+  stage: 'answer' | 'failed' | 'delivery'
+  content?: string
+  attentionId?: string
+  canRetry: boolean
+}

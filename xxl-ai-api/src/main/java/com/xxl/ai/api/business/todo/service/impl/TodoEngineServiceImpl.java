@@ -169,8 +169,9 @@ public class TodoEngineServiceImpl implements TodoEngineService {
         }
 
         // 回答：必须对应本待办里仍在等待的提问
+        boolean answer = TodoConstant.TRIGGER_ANSWER.equals(kind);
         Long answeredTicketId = null;
-        if (TodoConstant.TRIGGER_ANSWER.equals(kind)) {
+        if (answer && targetTicketId == null) {
             answeredTicketId = findAttentionTicket(thread.getId(), dto.getAttentionId());
             if (answeredTicketId == null) {
                 return Response.ofFail("该问题已回答或已失效");
@@ -182,9 +183,15 @@ public class TodoEngineServiceImpl implements TodoEngineService {
             if (target == null || target.getThreadId() != thread.getId() || target.getUserId() != userId
                     || !TodoJsonTool.longList(thread.getSubscriptions()).contains(targetTicketId)
                     || TodoConstant.ENDED_BY_HUMAN.equals(target.getEndedBy())
-                    || (target.getEndedTime() != null && !revalidate(target))
-                    || (answeredTicketId != null && !targetTicketId.equals(answeredTicketId))) {
+                    || (target.getEndedTime() != null && !revalidate(target))) {
                 return Response.ofFail("原工单或提问状态已变化，请重新提交");
+            }
+            if (answer) {
+                // 使用锁定后的工单，避免并发回答已被清除的提问。
+                if (!waitingForAttention(target, dto.getAttentionId())) {
+                    return Response.ofFail("该问题已回答或已失效");
+                }
+                answeredTicketId = targetTicketId;
             }
         }
 
@@ -269,12 +276,21 @@ public class TodoEngineServiceImpl implements TodoEngineService {
             return null;
         }
         for (TodoTicket ticket : ticketMapper.listByThread(threadId)) {
-            TodoAttention attention = TodoJsonTool.fromJson(ticket.getAttention(), TodoAttention.class);
-            if (ticket.getEndedTime() == null && attention != null && attentionId.equals(attention.id)) {
-                return ticket.getId();
+            if (waitingForAttention(ticket, attentionId)) {
+                // 待办页和对话页可能同时提交，按加锁后的提问状态受理。
+                TodoTicket current = ticketMapper.loadForUpdate(ticket.getId());
+                if (current != null && waitingForAttention(current, attentionId)) {
+                    return current.getId();
+                }
             }
         }
         return null;
+    }
+
+    private boolean waitingForAttention(TodoTicket ticket, String attentionId) {
+        TodoAttention attention = TodoJsonTool.fromJson(ticket.getAttention(), TodoAttention.class);
+        return !StringTool.isBlank(attentionId) && ticket.getEndedTime() == null
+                && attention != null && attentionId.equals(attention.id);
     }
 
     // ---------------------- 研判 ----------------------
